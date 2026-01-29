@@ -4,8 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { convex } from "@/lib/convexClient";
-
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 export const unstable_settings = {
   anchor: "(tabs)",
 };
