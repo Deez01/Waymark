@@ -40,7 +40,7 @@ export const updateCaption = mutation({
   }, 
   handler: async (ctx, args) => {
     // Vaildtion 
-    if (args.caption.length > 200) {
+    if (args.caption.length >= 200) {
       throw new Error("Caption too long (max 200 characters)")
     }
 
