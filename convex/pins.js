@@ -32,3 +32,20 @@ export const createPin = mutation({
     return newPinId;
   },
 })
+
+export const updateCaption = mutation({
+  args: {
+    pinId: v.id("pins"), 
+    caption: v.string(),
+  }, 
+  handler: async (ctx, args) => {
+    // Vaildtion 
+    if (args.caption.length > 200) {
+      throw new Error("Caption too long (max 200 characters)")
+    }
+
+    await ctx.db.patch(args.pinId, {
+      caption: args.caption,
+    });
+  },
+});
