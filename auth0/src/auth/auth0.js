@@ -1,11 +1,21 @@
-// Name:Bryan Estrada-Cordoba 
+// Name:Bryan Estrada-Cordoba
 
 // Auth0 Config file
 
-import Auth0 from 'react-native-auth0';
-import { AUTH0_DOMAIN, AUTH0_CLIENT_ID } from '@env.local';
+import Constants from 'expo-constants';
 
-export const auth0 = new Auth0 ({
-	domain: AUTH0_DOMAIN, 
-	clientId: AUTH0_CLIENT_ID,
-});
+const domain = Constants.expoConfig?.extra?.auth0Domain;
+const clientId = Constants.expoConfig?.extra?.auth0ClientId;
+
+if (!domain || !clientId) {
+  console.warn(
+    'Missing Auth0 configuration. Make sure AUTH0_DOMAIN and AUTH0_CLIENT_ID are set in your .env file.',
+    'Received:',
+    { domain, clientId, extra: Constants.expoConfig?.extra }
+  );
+}
+
+export const auth0Config = {
+  domain: domain ?? '',
+  clientId: clientId ?? '',
+};
