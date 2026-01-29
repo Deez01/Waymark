@@ -2,6 +2,7 @@ import { View } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { router } from "expo-router"
 
 export default function MapScreen() {
   // Get all pins to display on the map
@@ -48,6 +49,15 @@ export default function MapScreen() {
             }}
             title={pin.title}
             description={pin.caption}
+            onCalloutPress={() => {
+              router.push({
+                pathname: "/edit-caption",
+                params: {
+                  pinId: pin._id,
+                  currentCaption: pin.caption
+                },
+              });
+            }}
           />
         ))}
       </MapView>
