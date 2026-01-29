@@ -20,6 +20,13 @@ declare const fullApi: ApiFromModules<{
   users: typeof users;
 }>;
 
+declare const fullApi: ApiFromModules<{
+  achievements: typeof achievements;
+  demo: typeof demo;
+  pins: typeof pins;
+  users: typeof users;
+}>;
+
 /**
  * A utility for referencing Convex functions in your app's public API.
  *

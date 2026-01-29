@@ -20,14 +20,30 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="house.fill" color={color} />
+          ),
         }}
       />
+
       <Tabs.Screen
         name="explore"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="paperplane.fill" color={color} />
+          ),
+        }}
+      />
+
+      {/* NEW: Achievements / Badges tab */}
+      <Tabs.Screen
+        name="achievements"
+        options={{
+          title: 'Badges',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="star.fill" color={color} />
+          ),
         }}
       />
       <Tabs.Screen

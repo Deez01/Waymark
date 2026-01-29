@@ -1,0 +1,9 @@
+introduces a gamification/achievements system to Waymark that rewards users for meaningful activity such as dropping pins, sharing pins, and exploring specific categories (e.g., beaches and landmarks).
+
+The feature adds:
+
+A new Achievements (Badges) tab
+
+Progress tracking toward future achievements
+
+Automatically awarded badges when milestones are reached
