@@ -10,6 +10,7 @@
 
 import type * as users from "../users.js";
 
+
 import type {
   ApiFromModules,
   FilterApi,
@@ -17,13 +18,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  users: typeof users;
-}>;
-
-declare const fullApi: ApiFromModules<{
-  achievements: typeof achievements;
-  demo: typeof demo;
-  pins: typeof pins;
   users: typeof users;
 }>;
 
@@ -39,15 +33,6 @@ export declare const api: FilterApi<
   typeof fullApi,
   FunctionReference<any, "public">
 >;
-
-/**
- * A utility for referencing Convex functions in your app's internal API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = internal.myModule.myFunction;
- * ```
- */
 export declare const internal: FilterApi<
   typeof fullApi,
   FunctionReference<any, "internal">
