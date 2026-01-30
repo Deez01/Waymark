@@ -6,6 +6,7 @@ import { useMutation } from "convex/react"
 import { api } from "../convex/_generated/api";
 import { useState } from "react";
 import { Id } from "../convex/_generated/dataModel";
+import { ThemedText } from "@/components/themed-text";
 
 export default function EditCaptionScreen() {
     const { pinId, currentCaption } = useLocalSearchParams();
@@ -28,7 +29,10 @@ export default function EditCaptionScreen() {
             Alert.alert("Success", "Caption updated");
             router.back();
         } catch (err: any) {
-            Alert.alert("Error", err.message);
+            const message = 
+              err?.message ?? "Failed to save caption. Please try again.";
+
+            Alert.alert("Error", message);
         }
     };
 
@@ -48,7 +52,19 @@ export default function EditCaptionScreen() {
           minHeight: 80,
         }}
       />
-      <Button title="Save Caption" onPress={handleSave} />
+     <ThemedText
+        style={{
+          textAlign: "right",
+          color: caption.length > 200 ? "red" : "gray",
+        }}
+      >
+        {caption.length}/200
+      </ThemedText>
+      <Button 
+        title="Save Caption" 
+        onPress={handleSave} 
+        disabled={caption.length > 200}
+      />
     </View>
   );
 }
