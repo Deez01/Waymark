@@ -8,11 +8,8 @@
  * @module
  */
 
-<<<<<<< HEAD
 import type * as achievements from "../achievements.js";
 import type * as demo from "../demo.js";
-=======
->>>>>>> origin/BryanBranch
 import type * as pins from "../pins.js";
 import type * as users from "../users.js";
 
@@ -23,11 +20,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-<<<<<<< HEAD
   achievements: typeof achievements;
   demo: typeof demo;
-=======
->>>>>>> origin/BryanBranch
   pins: typeof pins;
   users: typeof users;
 }>;

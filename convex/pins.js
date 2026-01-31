@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 // Bare-bones pins API for testing gamification + basic app flows.
 // Extend / tighten types as the project grows.
 
@@ -19,36 +18,43 @@ export const getPinById = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.pinId);
-=======
-import { query, mutation } from "./_generated/server";
-import { v } from "convex/values";
+  },
+});
 
 export const getAllPins = query({
   handler: async (ctx) => {
     return await ctx.db.query("pins").collect();
->>>>>>> origin/BryanBranch
   },
 });
 
 export const createPin = mutation({
   args: {
-<<<<<<< HEAD
     ownerId: v.string(),
     title: v.string(),
-    description: v.string(),
+    description: v.optional(v.string()),
     lat: v.number(),
     lng: v.number(),
-    category: v.string(),
+    category: v.optional(v.string()),
+    address: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    thumbnail: v.optional(v.string()),
+    pictures: v.optional(v.array(v.string())),
+    tags: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const pinId = await ctx.db.insert("pins", {
-      ownerId: args.ownerId,
+ownerId: args.ownerId,
       title: args.title,
       description: args.description,
       lat: args.lat,
       lng: args.lng,
-      category: args.category,
+      category: args.category ?? "general",
       createdAt: Date.now(),
+      address: args.address,
+      caption: args.caption,
+      thumbnail: args.thumbnail,
+      pictures: args.pictures,
+      tags: args.tags,    
     });
     return pinId;
   },
@@ -65,30 +71,8 @@ export const deletePin = mutation({
     if (pin.ownerId !== args.ownerId) throw new Error("Not authorized");
     await ctx.db.delete(args.pinId);
     return true;
-=======
-    lat: v.number(),
-    lng: v.number(),
-    title: v.string(),
-    address: v.string(),
-    caption: v.string(),
-    thumbnail: v.string(),
-    pictures: v.array(v.string()),
-    tags: v.array(v.string()),
   },
-  handler: async (ctx, args) => {
-    const newPinId = await ctx.db.insert("pins", {
-      lat: args.lat,
-      lng: args.lng,
-      title: args.title,
-      address: args.address,
-      caption: args.caption,
-      thumbnail: args.thumbnail,
-      pictures: args.pictures,
-      tags: args.tags,
-    });
-    return newPinId;
-  },
-})
+});
 
 export const updateCaption = mutation({
   args: {
@@ -104,6 +88,5 @@ export const updateCaption = mutation({
     await ctx.db.patch(args.pinId, {
       caption: args.caption,
     });
->>>>>>> origin/BryanBranch
   },
 });
