@@ -40,8 +40,8 @@ export const updateCaption = mutation({
   }, 
   handler: async (ctx, args) => {
     // Vaildtion 
-    if (args.caption.length >= 200) {
-      throw new Error("Caption too long (max 200 characters)")
+    if (args.caption.length > 400) {
+      throw new Error("Caption too long (max 400 characters)")
     }
 
     await ctx.db.patch(args.pinId, {

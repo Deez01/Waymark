@@ -42,7 +42,7 @@ export default function EditCaptionScreen() {
         value={caption}
         onChangeText={setCaption}
         placeholder="Edit caption..."
-        maxLength={200}
+        maxLength={400}
         multiline
         style={{
           borderWidth: 1,
@@ -55,7 +55,7 @@ export default function EditCaptionScreen() {
      <ThemedText
         style={{
           textAlign: "right",
-          color: caption.length > 200 ? "red" : "gray",
+          color: caption.length > 400 ? "red" : "gray",
         }}
       >
         {caption.length}/200
@@ -63,7 +63,7 @@ export default function EditCaptionScreen() {
       <Button 
         title="Save Caption" 
         onPress={handleSave} 
-        disabled={caption.length > 200}
+        disabled={caption.length > 400}
       />
     </View>
   );
