@@ -9,8 +9,10 @@ npx expo start
 ```
 ```bash
 npx convex dev
-
 ```
+
+Choose an existing project and select "beritcheema" and "waymark", then select cloud deployment.
+
 ## Frontend Setup 
 The frontend is a React Native frontend and it should hot reload when you are updating the UI also donwload the expo app to run this frontend
 

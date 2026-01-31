@@ -11,6 +11,7 @@ export default defineSchema({
     name: v.string(),
   }).index("by_auth0Id", ["auth0Id"]),
 
+<<<<<<< HEAD
   // --- Core Waymark content (bare-bones, extend as needed) ---
   pins: defineTable({
     ownerId: v.string(), // Auth0 user.sub in production
@@ -40,4 +41,17 @@ export default defineSchema({
   })
     .index("by_ownerId", ["ownerId"])
     .index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
+=======
+  // Pin Data Table
+  pins: defineTable({
+    lat: v.number(),
+    lng: v.number(),
+    title: v.string(),
+    address: v.string(),
+    caption: v.string(),
+    thumbnail: v.string(),
+    pictures: v.array(v.string()),
+    tags: v.array(v.string()),
+  }),
+>>>>>>> origin/BryanBranch
 });
