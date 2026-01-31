@@ -43,7 +43,7 @@ export const createPin = mutation({
   },
   handler: async (ctx, args) => {
     const pinId = await ctx.db.insert("pins", {
-ownerId: args.ownerId,
+      ownerId: args.ownerId,
       title: args.title,
       description: args.description,
       lat: args.lat,
