@@ -7,6 +7,7 @@ import { api } from "../convex/_generated/api";
 import { useState } from "react";
 import { Id } from "../convex/_generated/dataModel";
 import { ThemedText } from "@/components/themed-text";
+import { useColorScheme } from "react-native";
 
 export default function EditCaptionScreen() {
     const { pinId, currentCaption } = useLocalSearchParams();
@@ -17,6 +18,9 @@ export default function EditCaptionScreen() {
         typeof currentCaption === "string" ? currentCaption : ""
 
     );
+
+    const colorScheme = useColorScheme();
+    const isDark = colorScheme === "dark";
 
     const updateCaption = useMutation(api.pins.updateCaption);
 
@@ -42,14 +46,17 @@ export default function EditCaptionScreen() {
         value={caption}
         onChangeText={setCaption}
         placeholder="Edit caption..."
+        placeholderTextColor={isDark ? "#888" : "#666"}
         maxLength={400}
         multiline
         style={{
           borderWidth: 1,
-          borderColor: "#ccc",
+          borderColor: isDark ? "#444" : "#ccc",
           padding: 10,
           borderRadius: 6,
           minHeight: 80,
+          backgroundColor: isDark ? "#111" : "#fff",
+          color: isDark ? "#fff" : "#000", // 👈 KEY FIX
         }}
       />
      <ThemedText
@@ -58,7 +65,7 @@ export default function EditCaptionScreen() {
           color: caption.length > 400 ? "red" : "gray",
         }}
       >
-        {caption.length}/200
+        {caption.length}/400
       </ThemedText>
       <Button 
         title="Save Caption" 
