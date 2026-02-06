@@ -1,13 +1,12 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import "react-native-reanimated";
 
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: "(tabs)",
 };
 
 const convex = new ConvexReactClient(

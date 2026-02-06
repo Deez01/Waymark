@@ -17,6 +17,7 @@ export default function MapScreen() {
 
     // Send pin data to backend to create new pin (placeholder for now)
     await createPin({
+      ownerId: "dev-user",  // TEMP placeholder
       lat: latitude,
       lng: longitude,
       title: "New Pin",

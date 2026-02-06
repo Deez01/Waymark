@@ -11,15 +11,39 @@ export default defineSchema({
     name: v.string(),
   }).index("by_auth0Id", ["auth0Id"]),
 
-  // Pin Data Table
+  // --- Core Waymark content (bare-bones, extend as needed) ---
   pins: defineTable({
+    ownerId: v.string(), // Auth0 user.sub in production
+    title: v.string(),
+    description: v.optional(v.string()),
     lat: v.number(),
     lng: v.number(),
-    title: v.string(),
-    address: v.string(),
-    caption: v.string(),
-    thumbnail: v.string(),
-    pictures: v.array(v.string()),
-    tags: v.array(v.string()),
-  }),
+    category: v.optional(v.string()), // "general" | "beach" | "landmark" | ...
+    createdAt: v.number(),
+
+    address: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    thumbnail: v.optional(v.string()),
+    pictures: v.optional(v.array(v.string())),
+    tags: v.optional(v.array(v.string())),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_category", ["category"]),
+
+  pinShares: defineTable({
+    pinId: v.string(), // bare-bones string id
+    fromOwnerId: v.string(),
+    toOwnerId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_fromOwnerId", ["fromOwnerId"])
+    .index("by_toOwnerId", ["toOwnerId"]),
+
+  userBadges: defineTable({
+    ownerId: v.string(),
+    badgeKey: v.string(),
+    earnedAt: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
 });
