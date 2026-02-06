@@ -56,7 +56,7 @@ export default function EditCaptionScreen() {
           borderRadius: 6,
           minHeight: 80,
           backgroundColor: isDark ? "#111" : "#fff",
-          color: isDark ? "#fff" : "#000", // 👈 KEY FIX
+          color: isDark ? "#fff" : "#000",
         }}
       />
      <ThemedText
