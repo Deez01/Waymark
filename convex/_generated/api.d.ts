@@ -10,6 +10,7 @@
 
 import type * as achievements from "../achievements.js";
 import type * as demo from "../demo.js";
+import type * as friends from "../friends.js";
 import type * as pins from "../pins.js";
 import type * as users from "../users.js";
 
@@ -22,6 +23,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   achievements: typeof achievements;
   demo: typeof demo;
+  friends: typeof friends;
   pins: typeof pins;
   users: typeof users;
 }>;
