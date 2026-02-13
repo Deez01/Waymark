@@ -2,44 +2,36 @@
 
 import { View, Text, TextInput, FlatList, TouchableOpacity } from "react-native";
 import { useState } from "react";
-
-type User = {
-    id: string;
-    username: string;
-};
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 
 export default function FriendScreen() {
     const [query, setQuery] = useState("");
-    const [results, setResults] = useState<User[]>([]);
+    const currentUserId = "demoUserId";
 
-    // Temp Mock Data
-    const mockUsers: User[] = [
-        { id: "1", username: "Bryan" },
-        { id: "2", username: "Jabcobo"},
-        { id: "3", username: "Luke"},
-        { id: "4", username: "Berit"},
-        { id: "5", username: "Anthony"},
-    ];
+    const results = useQuery(api.friends.searchUsers, {
+        search: query, 
+        currentUserId,
+    });
+    type ResultUser = NonNullable<typeof results>[number];
 
-    const handleSearch = (text: string) => {
-        setQuery(text);
+    // Mutation
+    const sendFriendRequest = useMutation(api.friends.sendFriendRequest);
 
-        if (text.trim() === "") {
-            setResults([]);
-            return;
-        }
+    // Loading pending UI state
+    const [pending, setPending] = useState<Id<"users">[]>([]);
 
-        const filtered = mockUsers.filter((user) => 
-            user.username.toLowerCase().includes(text.toLowerCase())
-        );
+    const handleSend = async (user: ResultUser) => {
 
-        setResults(filtered);
-    };
+        if (pending.includes(user._id)) return;
 
-    // Placeholder
-    const sendFriendRequest = (user: User) => {
-        console.log("Friend request set to:", user.username);
-        // Furture Devlopment with Convex
+        setPending((prev) => [...prev, user._id]);
+
+        await sendFriendRequest({
+            senderId: currentUserId,
+            receiverId: user._id,
+        });
     };
 
     return (
@@ -50,9 +42,9 @@ export default function FriendScreen() {
 
             {/* Search Bar */}
             <TextInput 
-                placeholder="Search by username or email..."
+                placeholder="Search users..."
                 value={query}
-                onChangeText={handleSearch}
+                onChangeText={setQuery}
                 style={{
                     borderWidth: 1, 
                     borderRadius: 10, 
@@ -60,13 +52,16 @@ export default function FriendScreen() {
                     marginBottom: 15, 
                 }}
             />
-             
-            {results.length === 0 && query.length > 0 ? (
+            
+            {/* Loading state */}
+            {results === undefined ? (
+                <Text>Loading...</Text>
+            ) : results.length === 0 && query.length > 0 ? (
                 <Text>No users found.</Text>
             ) : (
                 <FlatList
                     data={results}
-                    keyExtractor={(item) => item.id}
+                    keyExtractor={(item) => item._id}
                     renderItem={({ item }) => (
                         <View 
                             style={{
@@ -76,18 +71,26 @@ export default function FriendScreen() {
                                 borderBottomWidth: 0.5
                             }}
                         >
-                            <Text>{item.username}</Text>
+                            <Text>{item.name}</Text>
                             
                             {/* Add Friend Button */}
                             <TouchableOpacity 
-                                onPress={() => sendFriendRequest(item)}
+                                disabled={pending.includes(item._id)}
+                                onPress={() => handleSend(item)}
                                 style={{
-                                    backgroundColor: "#007AFF",
-                                    paddingVertical: 6, 
+                                    backgroundColor: pending.includes(item._id)
+                                        ? "#999"
+                                        : "#007AFF",
+                                    paddingHorizontal: 12, 
+                                    paddingVertical: 6,
                                     borderRadius: 8,
                                 }}
                             >
-                                <Text style={{ color: "white" }}>Add Friend</Text>
+                                <Text style={{ color: "white" }}>
+                                    {pending.includes(item._id)
+                                    ? "Requested"
+                                    : "Add Friend"}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     )}
