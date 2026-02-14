@@ -1,4 +1,4 @@
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -24,6 +24,7 @@ export default function SignInScreen() {
   const theme = Colors[colorScheme ?? "light"];
   const errorColor = colorScheme === "dark" ? "#FFB4A2" : "#B00020";
   const { signIn } = useAuthActions();
+  const router = useRouter();
   const convex = useConvex();
   const currentUser = useQuery(api.users.getCurrentUser);
   const [mode, setMode] = useState<AuthMode>("signIn");
@@ -78,11 +79,16 @@ export default function SignInScreen() {
           resolvedEmail = result.email;
         }
 
-        await signIn("password", {
+        const result = await signIn("password", {
           email: resolvedEmail,
           password: trimmedPassword,
           flow: "signIn",
         });
+        if (result?.signingIn) {
+          router.replace("/(tabs)");
+        } else {
+          setError("Sign in failed. Please try again.");
+        }
         return;
       }
 
@@ -114,12 +120,17 @@ export default function SignInScreen() {
         return;
       }
 
-      await signIn("password", {
+      const result = await signIn("password", {
         email: trimmedEmail,
         password: trimmedPassword,
         username: trimmedUsername,
         flow: "signUp",
       });
+      if (result?.signingIn) {
+        router.replace("/onboarding");
+      } else {
+        setError("Account creation failed. Please try again.");
+      }
     } catch (signInError) {
       console.error(signInError);
       setError("Sign in failed. Please try again.");

@@ -7,13 +7,7 @@ import { v } from "convex/values"; // 1. Import 'v'
 export default defineSchema({
   ...authTables,
   users: defineTable({
-    name: v.optional(v.string()),
-    image: v.optional(v.string()),
     email: v.string(),
-    emailVerificationTime: v.optional(v.number()),
-    phone: v.optional(v.string()),
-    phoneVerificationTime: v.optional(v.number()),
-    isAnonymous: v.optional(v.boolean()),
     username: v.string(),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
