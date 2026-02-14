@@ -37,17 +37,22 @@ export default defineSchema({
   tags: defineTable({
     name: v.string(),
     color: v.optional(v.string()),
+    category: v.optional(v.string()), // e.g., "Holiday", "Activity", "Food", or null for user-created
     isDefault: v.boolean(), // true for system tags, false for user-created
     createdBy: v.optional(v.id("users")), // null for default tags, user ID for custom tags
   })
     .index("by_name", ["name"])
     .index("by_is_default", ["isDefault"])
+    .index("by_category", ["category"])
     .index("by_creator", ["createdBy"]),
 
   // PinTags table - many-to-many relationship between pins and tags
   pinTags: defineTable({
     pinId: v.id("pins"),
+    pinTitle: v.string(), // Denormalized: title of the pin
     tagId: v.id("tags"),
+    tagName: v.string(), // Denormalized: name of the tag
+    tagColor: v.optional(v.string()), // Denormalized: color of the tag
   })
     .index("by_pin", ["pinId"])
     .index("by_tag", ["tagId"])
