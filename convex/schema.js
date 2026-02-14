@@ -47,12 +47,13 @@ export default defineSchema({
     .index("by_ownerId", ["ownerId"])
     .index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
   
-  friendRequest: defineTable({
+  friendRequests: defineTable({
     senderId: v.string(),
     receiverId: v.string(),
     status: v.string(), 
-    createdAt: v.number(),
+    createdAt: v.optional(v.number()),
   })
     .index("by_senderId", ["senderId"])
-    .index("by_receiverId", ["receiverId"]),
+    .index("by_receiverId", ["receiverId"])
+    .index("by_status", ["status"]),
 });

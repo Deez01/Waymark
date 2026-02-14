@@ -1,12 +1,19 @@
 // Name: Bryan Estrada-Cordoba
 
-import { View, Text, TextInput, FlatList, TouchableOpacity } from "react-native";
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { useThemeColor } from "@/hooks/use-theme-color";
+import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { FlatList, TextInput, TouchableOpacity } from "react-native";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 
 export default function FriendScreen() {
+    const inputBackground = useThemeColor({}, "background");
+    const textColor = useThemeColor({}, "text");
+    const borderColor = useThemeColor({}, "icon")
+
     const [query, setQuery] = useState("");
     const currentUserId = "demoUserId";
 
@@ -14,7 +21,20 @@ export default function FriendScreen() {
         search: query, 
         currentUserId,
     });
-    type ResultUser = NonNullable<typeof results>[number];
+
+    type ResultUser = NonNullable<
+        ReturnType<typeof useQuery<typeof api.friends.searchUsers>>
+    >[number];
+
+    const incoming = useQuery(api.friends.getIncomingRequests, {
+        userId: currentUserId,
+    });
+
+    const respondToRequest = useMutation(api.friends.respondToRequest);
+
+    const friends = useQuery(api.friends.listFriends, {
+        userId: currentUserId,
+    });
 
     // Mutation
     const sendFriendRequest = useMutation(api.friends.sendFriendRequest);
@@ -30,48 +50,102 @@ export default function FriendScreen() {
 
         await sendFriendRequest({
             senderId: currentUserId,
-            receiverId: user._id,
+            receiverId: user.auth0Id,
         });
     };
 
     return (
-        <View style={{ flex: 1, padding: 16 }}>
-            <Text style={{ fontSize: 24, fontWeight: "bold", marginBottom: 10 }}>
+        <ThemedView style={{ flex: 1, padding: 16 }}>
+            <ThemedText type="title" style={{marginBottom: 10 }}>
                 Friends
-            </Text>
+            </ThemedText>
+            
+            {/* Incoming Friend Requests */}
+            <ThemedText type="subtitle" style={{ marginTop: 10 }}>Incoming Request </ThemedText>
+
+            {incoming?.map((req) => (
+                <ThemedView   
+                    key={req._id}
+                    style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        paddingVertical: 8,
+                    }}
+                >
+                    <ThemedText>{req.senderName}</ThemedText>
+
+                    <ThemedView style={{ flexDirection: "row", gap: 10 }}>
+                    <TouchableOpacity
+                        onPress={() => 
+                            respondToRequest({
+                                requestId: req._id,
+                                action: "accepted",
+                            })
+                        } 
+                        style={{ backgroundColor: "#34C759", padding: 6, borderRadius: 6 }}
+                    >
+                        <ThemedText style={{ color: "white" }}>Accept</ThemedText>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity  
+                        onPress={() =>
+                            respondToRequest({
+                                requestId: req._id,
+                                action: "rejected",
+                            })
+                        }
+                        style={{ backgroundColor: "#FF3B30", padding: 6, borderRadius: 6}}
+                    >
+                        <ThemedText style={{ color: "white"}}>Reject</ThemedText>
+                    </TouchableOpacity>
+                </ThemedView>
+            </ThemedView>
+            ))}
+
+            {/* Friend List */}
+            <ThemedText style={{ fontSize: 18, margin: 10}}>My Friends</ThemedText>
+            
+            {friends?.map((f) => (
+                <ThemedText key={f._id}>{f.name}</ThemedText>
+            ))}
 
             {/* Search Bar */}
             <TextInput 
                 placeholder="Search users..."
+                placeholderTextColor="#888"
                 value={query}
                 onChangeText={setQuery}
                 style={{
                     borderWidth: 1, 
+                    borderColor: borderColor,
                     borderRadius: 10, 
                     padding: 10, 
                     marginBottom: 15, 
+                    backgroundColor: inputBackground,
+                    color: textColor,
                 }}
             />
             
             {/* Loading state */}
             {results === undefined ? (
-                <Text>Loading...</Text>
+                <ThemedText>Loading...</ThemedText>
             ) : results.length === 0 && query.length > 0 ? (
-                <Text>No users found.</Text>
+                <ThemedText>No users found.</ThemedText>
             ) : (
                 <FlatList
                     data={results}
                     keyExtractor={(item) => item._id}
                     renderItem={({ item }) => (
-                        <View 
+                        <ThemedView 
                             style={{
                                 flexDirection: "row", 
                                 justifyContent: "space-between", 
                                 paddingVertical: 12, 
-                                borderBottomWidth: 0.5
+                                borderBottomWidth: 0.5, 
+                                borderBottomColor: borderColor,
                             }}
                         >
-                            <Text>{item.name}</Text>
+                            <ThemedText>{item.name}</ThemedText>
                             
                             {/* Add Friend Button */}
                             <TouchableOpacity 
@@ -86,17 +160,17 @@ export default function FriendScreen() {
                                     borderRadius: 8,
                                 }}
                             >
-                                <Text style={{ color: "white" }}>
+                                <ThemedText style={{ color: "white" }}>
                                     {pending.includes(item._id)
                                     ? "Requested"
                                     : "Add Friend"}
-                                </Text>
+                                </ThemedText>
                             </TouchableOpacity>
-                        </View>
+                        </ThemedView>
                     )}
                 />
             )}
-        </View>
+        </ThemedView>
     );
 }
 
