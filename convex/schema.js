@@ -1,19 +1,32 @@
 // Name: Bryan Estrada-Cordoba
 // convex/schema.js
 import { defineSchema, defineTable } from "convex/server";
+import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values"; // 1. Import 'v'
 
 export default defineSchema({
+  ...authTables,
   users: defineTable({
-    // 2. Use v.string() instead of "string"
-    auth0Id: v.string(),
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
     email: v.string(),
-    name: v.string(),
-  }).index("by_auth0Id", ["auth0Id"]),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    username: v.string(),
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
+    age: v.optional(v.number()),
+    ethnicity: v.optional(v.string()),
+    profileComplete: v.optional(v.boolean()),
+  })
+    .index("by_email", ["email"])
+    .index("by_username", ["username"]),
 
   // --- Core Waymark content (bare-bones, extend as needed) ---
   pins: defineTable({
-    ownerId: v.string(), // Auth0 user.sub in production
+    ownerId: v.string(), // Authenticated user id in production
     title: v.string(),
     description: v.optional(v.string()),
     lat: v.number(),

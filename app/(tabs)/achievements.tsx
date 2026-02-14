@@ -10,7 +10,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
-const OWNER_ID = "demo-user"; // bare-bones testing; replace with Auth0 user.sub later
+const OWNER_ID = "demo-user"; // bare-bones testing; replace with authenticated user id later
 
 export default function AchievementsScreen() {
   const colorScheme = useColorScheme();

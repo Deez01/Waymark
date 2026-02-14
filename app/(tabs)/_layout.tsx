@@ -1,13 +1,28 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { api } from '@/convex/_generated/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useQuery } from 'convex/react';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const currentUser = useQuery(api.users.getCurrentUser);
+
+  if (currentUser === undefined) {
+    return null;
+  }
+
+  if (!currentUser) {
+    return <Redirect href="/sign-in" />;
+  }
+
+  if (!currentUser.profileComplete) {
+    return <Redirect href="/onboarding" />;
+  }
 
   return (
     <Tabs
