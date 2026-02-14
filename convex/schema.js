@@ -16,6 +16,8 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_username", ["username"]),
 
+
+    //Pins table
   pins: defineTable({
     address: v.optional(v.string()),
     caption: v.optional(v.string()),

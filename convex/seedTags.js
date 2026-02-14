@@ -1,3 +1,5 @@
+//Function for repopulating/updating tags table
+
 import { mutation } from "./_generated/server";
 
 const defaultTags = [
