@@ -133,5 +133,17 @@ export default defineSchema({
   })
     .index("by_reporter", ["reportedBy"])
     .index("by_status", ["status"])
-    .index("by_type", ["reportType"]),
+    .index("by_type", ["reportType"])
+    .index("by_ownerId", ["ownerId"])
+    .index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
+  
+  friendRequests: defineTable({
+    senderId: v.string(),
+    receiverId: v.string(),
+    status: v.string(), 
+    createdAt: v.optional(v.number()),
+  })
+    .index("by_senderId", ["senderId"])
+    .index("by_receiverId", ["receiverId"])
+    .index("by_status", ["status"]),
 });
