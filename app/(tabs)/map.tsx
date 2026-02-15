@@ -1,37 +1,30 @@
+// app/(tabs)/map.tsx
 import { View } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { router } from "expo-router"
+import { useQuery } from "convex/react"; // Removed useMutation since we don't create here anymore
+import { api } from "@/convex/_generated/api";
+import { router } from "expo-router";
 
 export default function MapScreen() {
-  // Get all pins to display on the map
   const pins = useQuery(api.pins.getAllPins);
 
-  // Load Create Pin function
-  const createPin = useMutation(api.pins.createPin);
-
-  // Long Press handler to add new pin (placeholder for add pin tab)
-  const handleLongPress = async (e: LongPressEvent) => {
+  // New Handler: Navigate to the Create Tab with coordinates
+  const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
 
-    // Send pin data to backend to create new pin (placeholder for now)
-    await createPin({
-      ownerId: "dev-user",  // TEMP placeholder
-      lat: latitude,
-      lng: longitude,
-      title: "New Pin",
-      address: "123 Placeholder St",
-      caption: "This is a cool spot!",
-      thumbnail: "https://example.com/thumbnail.jpg",
-      pictures: ["https://example.com/pic1.jpg", "https://example.com/pic2.jpg"],
-      tags: ["Coffee", "Food"],
+    router.push({
+      pathname: "/(tabs)/create",
+      params: {
+        lat: latitude.toString(),
+        lng: longitude.toString()
+      },
     });
   };
 
   return (
     <View style={{ flex: 1 }}>
       <MapView
+        provider="google" // Makes sure we use Google Maps
         style={{ flex: 1 }}
         initialRegion={{
           latitude: 33.783,
@@ -51,8 +44,9 @@ export default function MapScreen() {
             title={pin.title}
             description={pin.caption}
             onCalloutPress={() => {
+              // Navigate to edit/view details
               router.push({
-                pathname: "/edit-caption",
+                pathname: "/edit-caption", // Make sure this route exists or change to valid route
                 params: {
                   pinId: pin._id,
                   currentCaption: pin.caption
@@ -65,4 +59,3 @@ export default function MapScreen() {
     </View>
   );
 }
-
