@@ -12,32 +12,42 @@ export default defineSchema({
   }).index("by_auth0Id", ["auth0Id"]),
 
   // --- Core Waymark content (bare-bones, extend as needed) ---
-pins: defineTable({
-  ownerId: v.string(), // Auth0 user.sub in production
+  pins: defineTable({
+    ownerId: v.string(), // Auth0 user.sub in production
 
-  // Core fields
-  title: v.string(),
-  category: v.string(), // "general" | "beach" | "landmark" | ...
+    // Core fields
+    title: v.string(),
+    category: v.string(), // "general" | "beach" | "landmark" | ...
 
-  // Your existing data uses "caption" instead of "description"
-  caption: v.optional(v.string()),
-  description: v.optional(v.string()),
+    // existing data uses "caption" instead of "description"
+    caption: v.optional(v.string()),
+    description: v.optional(v.string()),
 
-  // Location
-  lat: v.number(),
-  lng: v.number(),
+    // Location
+    lat: v.number(),
+    lng: v.number(),
 
-  // Extra fields seen in your existing documents
-  address: v.optional(v.string()),
-  thumbnail: v.optional(v.string()),
-  pictures: v.optional(v.array(v.string())),
-  tags: v.optional(v.array(v.string())),
+    // Extra fields seen in existing documents
+    address: v.optional(v.string()),
+    thumbnail: v.optional(v.string()),
+    pictures: v.optional(v.array(v.string())),
+    tags: v.optional(v.array(v.string())),
 
-  // Time
-  createdAt: v.number(),
-})
-  .index("by_ownerId", ["ownerId"])
-  .index("by_category", ["category"]),
+    // Time
+    createdAt: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_category", ["category"]),
+
+  // 🔹 REQUIRED for achievements system
+  pinShares: defineTable({
+    pinId: v.string(),
+    fromOwnerId: v.string(),
+    toOwnerId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_fromOwnerId", ["fromOwnerId"])
+    .index("by_toOwnerId", ["toOwnerId"]),
 
   userBadges: defineTable({
     ownerId: v.string(),
