@@ -1,30 +1,47 @@
 // app/(tabs)/map.tsx
+import { useState, useEffect } from "react";
 import { View } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
-import { useQuery } from "convex/react"; // Removed useMutation since we don't create here anymore
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+
+// Import new sheet component
+import AddPinSheet from "@/components/AddPinSheet";
 
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
+  const params = useLocalSearchParams();
 
-  // New Handler: Navigate to the Create Tab with coordinates
+  // State to control the bottom sheet
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedLat, setSelectedLat] = useState<number | undefined>();
+  const [selectedLng, setSelectedLng] = useState<number | undefined>();
+
+  // Listen for the "Add Pin" tab button press
+  useEffect(() => {
+    if (params.openSheet === 'true') {
+      setSelectedLat(undefined); // Clear any old coordinates
+      setSelectedLng(undefined);
+      setIsSheetOpen(true);
+
+      // Clear the parameter so it doesn't trigger again randomly
+      router.setParams({ openSheet: '' });
+    }
+  }, [params.openSheet]);
+
+  // Handler: Open sheet with coordinates on long press
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
-
-    router.push({
-      pathname: "/(tabs)/create",
-      params: {
-        lat: latitude.toString(),
-        lng: longitude.toString()
-      },
-    });
+    setSelectedLat(latitude);
+    setSelectedLng(longitude);
+    setIsSheetOpen(true);
   };
 
   return (
     <View style={{ flex: 1 }}>
       <MapView
-        provider="google" // Makes sure we use Google Maps
+        provider="google"
         style={{ flex: 1 }}
         initialRegion={{
           latitude: 33.783,
@@ -46,7 +63,7 @@ export default function MapScreen() {
             onCalloutPress={() => {
               // Navigate to edit/view details
               router.push({
-                pathname: "/edit-caption", // Make sure this route exists or change to valid route
+                pathname: "/edit-caption",
                 params: {
                   pinId: pin._id,
                   currentCaption: pin.caption
@@ -56,6 +73,14 @@ export default function MapScreen() {
           />
         ))}
       </MapView>
+
+      {/* The new Bottom Sheet Overlay */}
+      <AddPinSheet
+        isOpen={isSheetOpen}
+        onClose={() => setIsSheetOpen(false)}
+        initialLat={selectedLat}
+        initialLng={selectedLng}
+      />
     </View>
   );
 }

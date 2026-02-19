@@ -18,6 +18,8 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
       }}>
+
+      {/* 1. Map Tab */}
       <Tabs.Screen
         name="map"
         options={{
@@ -26,6 +28,7 @@ export default function TabLayout() {
         }}
       />
 
+      {/* 2. Create Pin Tab (Intercepted for Bottom Sheet) */}
       <Tabs.Screen
         name="create"
         options={{
@@ -33,20 +36,19 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => (
             <IconSymbol size={32} name="plus.circle.fill" color={color} />
           ),
-          // Intercept the button press
           tabBarButton: (props) => (
             <TouchableOpacity
               {...props}
               onPress={(e) => {
-                e.preventDefault(); // Stop the default navigation to create.tsx
-                // Route to the map and pass a parameter to trigger the bottom sheet
-                router.push('/(tabs)/map?openSheet=true');
+                e.preventDefault(); // Stops navigation to the dummy create screen
+                router.push('/(tabs)/map?openSheet=true'); // Opens the sheet on the map
               }}
             />
           ),
         }}
       />
 
+      {/* 3. Badges Tab */}
       <Tabs.Screen
         name="achievements"
         options={{
@@ -57,6 +59,16 @@ export default function TabLayout() {
         }}
       />
 
+      {/* 4. User Tab */}
+      <Tabs.Screen
+        name="user"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="person.fill" color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
