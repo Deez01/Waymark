@@ -1,13 +1,13 @@
 // convex/schema.js
-import { defineSchema, defineTable } from "convex/server";
 import { authTables } from "@convex-dev/auth/server";
+import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
   ...authTables,
   users: defineTable({
     email: v.string(),
-    username: v.string(),
+    username: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     age: v.optional(v.number()),
@@ -140,13 +140,13 @@ export default defineSchema({
   })
     .index("by_reporter", ["reportedBy"])
     .index("by_status", ["status"])
-    .index("by_type", ["reportType"])
-    .index("by_ownerId", ["ownerId"])
-    .index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
+    .index("by_type", ["reportType"]),
+    //.index("by_ownerId", ["ownerId"])
+    //.index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
   
   friendRequests: defineTable({
-    senderId: v.string(),
-    receiverId: v.string(),
+    senderId: v.id("users"),
+    receiverId: v.id("users"),
     status: v.string(), 
     createdAt: v.optional(v.number()),
   })
