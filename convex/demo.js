@@ -55,15 +55,36 @@ export const seedDemoActivity = mutation({
 export const resetDemoBadges = mutation({
   args: { ownerId: v.string() },
   handler: async (ctx, args) => {
+    const ownerId = args.ownerId;
+
+    // 1) Delete badges
     const badges = await ctx.db
       .query("userBadges")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
       .collect();
-
     for (const b of badges) {
       await ctx.db.delete(b._id);
+    }
+
+    // 2) Delete pins
+    const pins = await ctx.db
+      .query("pins")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    for (const p of pins) {
+      await ctx.db.delete(p._id);
+    }
+
+    // 3) Delete shares sent by this user
+    const shares = await ctx.db
+      .query("pinShares")
+      .withIndex("by_fromOwnerId", (q) => q.eq("fromOwnerId", ownerId))
+      .collect();
+    for (const s of shares) {
+      await ctx.db.delete(s._id);
     }
 
     return { ok: true };
   },
 });
+
