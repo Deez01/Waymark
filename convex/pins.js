@@ -1,8 +1,8 @@
 // Bare-bones pins API for testing gamification + basic app flows.
 // Extend / tighten types as the project grows.
 
-import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
 
 export const getPinsByOwner = query({
   args: { ownerId: v.string() },
