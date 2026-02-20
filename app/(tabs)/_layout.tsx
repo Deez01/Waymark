@@ -3,7 +3,9 @@ import React from 'react';
 import { TouchableOpacity } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+// 1. Swap the import to MaterialIcons
+import { MaterialIcons } from '@expo/vector-icons';
+
 import { Colors } from '@/constants/theme';
 import { api } from '@/convex/_generated/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -14,17 +16,9 @@ export default function TabLayout() {
   const router = useRouter();
   const currentUser = useQuery(api.users.getCurrentUser);
 
-  if (currentUser === undefined) {
-    return null;
-  }
-
-  if (!currentUser) {
-    return <Redirect href="/sign-in" />;
-  }
-
-  if (!currentUser.profileComplete) {
-    return <Redirect href="/onboarding" />;
-  }
+  if (currentUser === undefined) return null;
+  if (!currentUser) return <Redirect href="/sign-in" />;
+  if (!currentUser.profileComplete) return <Redirect href="/onboarding" />;
 
   return (
     <Tabs
@@ -39,7 +33,7 @@ export default function TabLayout() {
         name="map"
         options={{
           title: 'Map',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="map.fill" color={color} />,
+          tabBarIcon: ({ color }) => <MaterialIcons size={28} name="map" color={color} />,
         }}
       />
 
@@ -49,26 +43,25 @@ export default function TabLayout() {
         options={{
           title: "Friends",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.2.fill" color={color} />
+            <MaterialIcons size={28} name="people" color={color} />
           ),
         }}
       />
 
-
-      {/* 3. Create Pin Tab (Intercepted for Bottom Sheet) */}
+      {/* 3. Create Pin Tab */}
       <Tabs.Screen
         name="create"
         options={{
           title: 'Add Pin',
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={32} name="plus.circle.fill" color={color} />
+            <MaterialIcons size={28} name="add-box" color={color} />
           ),
           tabBarButton: (props) => (
             <TouchableOpacity
               {...props}
               onPress={(e) => {
-                e.preventDefault(); // Stops navigation to the dummy create screen
-                router.push('/(tabs)/map?openSheet=true'); // Opens the sheet on the map
+                e.preventDefault();
+                router.push('/(tabs)/map?openSheet=true');
               }}
             />
           ),
@@ -81,7 +74,7 @@ export default function TabLayout() {
         options={{
           title: 'Badges',
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="star.fill" color={color} />
+            <MaterialIcons size={28} name="star" color={color} />
           ),
         }}
       />
@@ -92,7 +85,7 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.fill" color={color} />
+            <MaterialIcons size={28} name="person" color={color} />
           ),
         }}
       />
