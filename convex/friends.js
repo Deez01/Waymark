@@ -7,22 +7,29 @@ import { mutation, query } from "./_generated/server";
 export const searchUsers = query({
     args: { 
         search: v.string(), 
-        currentUserId: v.string() 
+        currentUserId: v.string("users"),
     },
     handler: async (ctx, args) => { 
         if (!args.search) return [];
+
+        const searchLower = args.search.toLowerCase();
 
         const users = await ctx.db.query("users").collect();
 
         return users.filter (
             (u) =>
-                u.auth0Id !== args.currentUserId &&
-                u.name.toLowerCase().includes(args.search.toLowerCase())
+                u._id !== args.currentUserId &&
+                (
+                    u.username?.toLowerCase().includes(searchLower) ||
+                    u.firstName?.toLowerCase().includes(searchLower) ||
+                    u.lastName?.toLowerCase().includes(searchLower)
+                )
         ) 
         .map((u) => ({
             _id: u._id,
-            name: u.name,
-            auth0Id: u.auth0Id,
+            username: u.username,
+            firstName: u.firstName,
+            lastName: u.lastName,
         }));
     },
 });
@@ -30,8 +37,8 @@ export const searchUsers = query({
 // Send Friend Request
 export const sendFriendRequest = mutation({
     args: {
-        senderId: v.string(),
-        receiverId: v.string(),
+        senderId: v.id("users"),
+        receiverId: v.id("users"),
     },
     handler: async (ctx, args) => {
         // Prevents self requests
@@ -49,7 +56,7 @@ export const sendFriendRequest = mutation({
         );
         
         if (duplicate) {
-            return { alreadySent: true}
+            return { alreadySent: true };
         }
 
         await ctx.db.insert("friendRequests", {
@@ -59,12 +66,12 @@ export const sendFriendRequest = mutation({
             createdAt: Date.now(),
         });
 
-        return { success: true}
+        return { success: true };
     },
 });
 
 export const getIncomingRequests = query({
-    args: { userId: v.string() },
+    args: { userId: v.id("users") },
     handler: async (ctx, args) => {
         const requests = await ctx.db
             .query("friendRequests")
@@ -78,12 +85,17 @@ export const getIncomingRequests = query({
         return requests
             .filter((r) => r.status === "pending")
             .map((r) => {
-                const sender = users.find((u) => u.auth0Id === r.senderId);
+                const sender = users.find((u) => u._id === r.senderId);
 
                 return {
-                    _id: r._id, 
-                    senderName: sender?.name ?? "Unknown",
+                    requestId: r._id, 
                     senderId: r.senderId,
+                    senderName: 
+                        sender?.username ??
+                        (
+                            `${sender?.firstName ?? ""} ${sender?.lastName ?? ""}`.trim() ||
+                            "Unknown"
+                        )
                 };
             });
     },
@@ -105,7 +117,7 @@ export const respondToRequest = mutation({
 });
 
 export const listFriends = query({
-    args: { userId: v.string() },
+    args: { userId: v.id("users") },
     handler: async (ctx, args) => {
         // Query logic to find accepted friends
         const requests = await ctx.db
@@ -120,15 +132,20 @@ export const listFriends = query({
             (r.senderId === args.userId || r.receiverId === args.userId)
         );
         return accepted.map((r) => {
-            const friendAuth0Id = 
+            const friendId = 
                 r.senderId === args.userId ? r.receiverId : r.senderId;
-            
-            const friend = users.find((u) => u.auth0Id === friendAuth0Id);
+
+            const friend = users.find((u) => u._id === friendId);
 
             return {
-                _id: friend?._id, 
-                name: friend?.name ?? "Unknown",
-                auth0Id: friendAuth0Id,
+                _id: friendId, 
+                username: friend?.username,
+                name: 
+                    friend?.username ?? 
+                    (
+                        `${friend?.firstName ?? ""} ${friend?.lastName ?? ""}`.trim() ||
+                        "Unknown"
+                    )
             };
         });
     },
