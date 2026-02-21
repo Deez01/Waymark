@@ -2,7 +2,7 @@
 
 import { ThemedText } from "@/components/themed-text";
 import { useMutation, useQuery } from "convex/react";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Alert, Button, Modal, ScrollView, Text, TextInput, TouchableOpacity, useColorScheme, View } from "react-native";
 import { api } from "../convex/_generated/api";
@@ -120,6 +120,12 @@ export default function EditCaptionScreen() {
     };
 
     return (
+      <>
+      <Stack.Screen
+        options={{
+          title: "Edit Caption",
+        }}
+      />
     <ScrollView style={{ padding: 16, backgroundColor: isDark ? "#000" : "#fff", flex: 1 }}>
       <ThemedText style={{ fontSize: 16, fontWeight: "600", marginBottom: 8 }}>Caption</ThemedText>
       <TextInput
@@ -325,5 +331,6 @@ export default function EditCaptionScreen() {
         </View>
       </Modal>
     </ScrollView>
+    </>
   );
 }
