@@ -1,4 +1,3 @@
-// app/(tabs)/map.tsx
 import { useState, useEffect } from "react";
 import { View, TextInput, StyleSheet, TouchableOpacity, Text, Keyboard } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
@@ -17,6 +16,8 @@ export default function MapScreen() {
   const colorScheme = useColorScheme();
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
+
+  const adwaitaBlue = '#62a0ea';
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
@@ -105,7 +106,8 @@ export default function MapScreen() {
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             title={pin.title}
             description={pin.caption}
-            pinColor="#f66151" // GNOME Pink/Rose
+            // Markers now use Adwaita Blue
+            pinColor={adwaitaBlue}
             onCalloutPress={() => {
               router.push({
                 pathname: "/edit-caption",
@@ -124,7 +126,7 @@ export default function MapScreen() {
             shadowColor: colorScheme === 'dark' ? '#000' : '#888'
           }
         ]}>
-          <MaterialIcons name="search" size={24} color={theme.icon} style={styles.searchIcon} />
+          <MaterialIcons name="search" size={24} color={adwaitaBlue} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search for a place..."
@@ -134,7 +136,7 @@ export default function MapScreen() {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); }}>
-              <MaterialIcons name="close" size={20} color={theme.icon} />
+              <MaterialIcons name="close" size={20} color={adwaitaBlue} />
             </TouchableOpacity>
           )}
         </View>
@@ -172,18 +174,14 @@ export default function MapScreen() {
   );
 }
 
-// --- FINAL MISTY ADWAITA MAP STYLES WITH GRAY STREETS ---
-
 const darkMapStyle = [
   { "elementType": "geometry", "stylers": [{ "color": "#2d2d2d" }] },
   { "elementType": "labels.text.fill", "stylers": [{ "color": "#77767b" }] },
   { "elementType": "labels.text.stroke", "stylers": [{ "color": "#2d2d2d" }] },
   { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#303030" }] },
   { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#26a269" }, { "lightness": -45 }, { "saturation": -20 }] },
-  // Streets: A lighter Slate Gray for visibility
   { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#424242" }] },
   { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#4f4f4f" }] },
-  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9a9996" }] },
   { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#1a5fb4" }, { "lightness": -20 }, { "saturation": -30 }] }
 ];
 
@@ -192,10 +190,8 @@ const lightMapStyle = [
   { "elementType": "labels.text.fill", "stylers": [{ "color": "#5e5c64" }] },
   { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#faf9f8" }] },
   { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#8ff0a4" }, { "lightness": 30 }, { "saturation": -30 }] },
-  // Streets: Light Gray with a very faint outline
   { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#eeeeee" }] },
   { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#dcdcdc" }] },
-  { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#e0e0e0" }] },
   { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#99c1f1" }, { "lightness": 20 }, { "saturation": -20 }] }
 ];
 

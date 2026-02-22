@@ -6,7 +6,6 @@ import * as Location from 'expo-location';
 import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
-// Import your theme constants and hook
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -28,7 +27,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
-  const snapPoints = useMemo(() => ['3.5%', '45%', dynamicSnap], [dynamicSnap]);
+  const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
 
   const createPin = useMutation(api.pins.createPin);
