@@ -1,3 +1,4 @@
+// app/(tabs)/map.tsx
 import { useState, useEffect } from "react";
 import { View, TextInput, StyleSheet, TouchableOpacity, Text, Keyboard } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
@@ -18,6 +19,7 @@ export default function MapScreen() {
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const adwaitaBlue = '#62a0ea';
+  const adwaitaRed = '#e01b24'; // Added Adwaita Red for the pins
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
@@ -106,8 +108,8 @@ export default function MapScreen() {
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             title={pin.title}
             description={pin.caption}
-            // Markers now use Adwaita Blue
-            pinColor={adwaitaBlue}
+            // Pins set to Adwaita Red for better visibility
+            pinColor={adwaitaRed}
             onCalloutPress={() => {
               router.push({
                 pathname: "/edit-caption",
@@ -173,6 +175,7 @@ export default function MapScreen() {
     </View>
   );
 }
+
 
 const darkMapStyle = [
   { "elementType": "geometry", "stylers": [{ "color": "#2d2d2d" }] },
