@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Modal, Alert } from 'react-native';
-import BottomSheet, { BottomSheetView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Modal, Alert, Dimensions, Platform } from 'react-native';
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
 import * as Location from 'expo-location';
 import { api } from '@/convex/_generated/api';
@@ -17,7 +17,13 @@ interface AddPinSheetProps {
 
 export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress }: AddPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['45%', '85%'], []);
+
+  // 1. Set a dynamic state for the expanded height, defaulting to a standard size
+  const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
+
+  // 2. The snap points now automatically update when dynamicSnap changes
+  const snapPoints = useMemo(() => ['45%', dynamicSnap], [dynamicSnap]);
+
   const [sheetIndex, setSheetIndex] = useState(0);
 
   const createPin = useMutation(api.pins.createPin);
@@ -43,6 +49,39 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     acc[category].push(tag);
     return acc;
   }, {}) : {};
+
+  // --- THE ULTIMATE DYNAMIC KEYBOARD FIX ---
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      let kbHeight = e.endCoordinates.height;
+
+      // Bypass the Android bug where kbHeight incorrectly reports as 0 or a tiny number
+      if (Platform.OS === 'android' && kbHeight < 100) {
+        const screenHeight = Dimensions.get('screen').height; // True physical height
+        const windowHeight = Dimensions.get('window').height; // Squished app height
+        kbHeight = screenHeight - windowHeight; // The exact height of the keyboard!
+      }
+
+      // The sheet sits at the absolute bottom, so the keyboard covers the bottom 'kbHeight' pixels.
+      // To keep the form perfectly visible, the sheet must be exactly the keyboard's height + the form's height (approx 380px).
+      const perfectHeight = kbHeight + 320;
+      setDynamicSnap(perfectHeight);
+
+      // Snap to it after a micro-delay to ensure the new dynamicSnap state has registered
+      setTimeout(() => {
+        bottomSheetRef.current?.snapToIndex(1);
+      }, 10);
+    });
+
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      bottomSheetRef.current?.snapToIndex(0); // Drops to 45% automatically
+    });
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -162,13 +201,14 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       enablePanDownToClose
       onClose={onClose}
       onChange={(index) => setSheetIndex(index)}
-      keyboardBehavior="extend"
-      keyboardBlurBehavior="restore"
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.handleIndicator}
     >
-      <BottomSheetView style={styles.contentContainer}>
-
+      <BottomSheetScrollView
+        style={styles.scrollWrapper}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+      >
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
           <TouchableOpacity style={styles.addImageButton}>
             <IconSymbol name="plus" size={32} color="#000" />
@@ -180,7 +220,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
         <View style={styles.formContainer}>
           <View style={styles.titleRow}>
-            <BottomSheetTextInput
+            <TextInput
               style={styles.titleInput}
               placeholder="Location Name"
               placeholderTextColor="#888"
@@ -214,7 +254,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
           )}
 
           <View style={[styles.notesAndSaveRow, sheetIndex === 1 && styles.notesAndSaveRowExpanded]}>
-            <BottomSheetTextInput
+            <TextInput
               style={[styles.notesInput, sheetIndex === 1 && styles.notesInputExpanded]}
               placeholder="Add Notes..."
               placeholderTextColor="#aaa"
@@ -237,7 +277,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
             </TouchableOpacity>
           </View>
         </View>
-      </BottomSheetView>
+      </BottomSheetScrollView>
 
       <Modal visible={showTagModal} animationType="slide" transparent={true} onRequestClose={() => setShowTagModal(false)}>
         <View style={styles.modalOverlay}>
@@ -293,7 +333,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 const styles = StyleSheet.create({
   sheetBackground: { borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: '#fff' },
   handleIndicator: { width: 40, backgroundColor: '#ddd' },
-  contentContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
+  scrollWrapper: { flex: 1 },
+  contentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
   imageScroll: { flexGrow: 0, marginBottom: 20 },
   addImageButton: { width: 100, height: 120, backgroundColor: '#f0f0f0', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   placeholderImageBox: { width: 100, height: 120, backgroundColor: '#fafafa', borderRadius: 12, borderWidth: 1, borderColor: '#eee', justifyContent: 'center', alignItems: 'center', marginRight: 10 },

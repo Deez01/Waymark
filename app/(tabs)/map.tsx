@@ -49,13 +49,18 @@ export default function MapScreen() {
       return;
     }
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5`, {
+      // Added accept-language=es to help with Spanish locations
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en`, {
         headers: { 'User-Agent': 'WaymarkApp/1.0' }
       });
-      const data = await response.json();
+
+      if (!response.ok) return; // Fail silently instead of crashing if the API is overwhelmed
+
+      const textResponse = await response.text();
+      const data = JSON.parse(textResponse); // Safely parse it
       setPredictions(data);
     } catch (e) {
-      console.error("Autocomplete error:", e);
+      console.log("Autocomplete error safely caught:", e);
     }
   };
 
@@ -85,6 +90,7 @@ export default function MapScreen() {
           longitudeDelta: 0.05,
         }}
         onLongPress={handleLongPress}
+        onPress={() => Keyboard.dismiss()} // Hides keyboard when tapping the map!
       >
         {pins?.map((pin: any) => (
           <Marker
@@ -155,39 +161,11 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchOverlay: {
-    position: 'absolute',
-    top: 60,
-    left: 20,
-    right: 20,
-    zIndex: 10,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingHorizontal: 15,
-    height: 50,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
+  searchOverlay: { position: 'absolute', top: 60, left: 20, right: 20, zIndex: 10 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, color: '#000' },
-  predictionsContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginTop: 8,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    overflow: 'hidden',
-  },
+  predictionsContainer: { backgroundColor: '#fff', borderRadius: 16, marginTop: 8, elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
   predictionItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   predictionMainText: { fontSize: 16, fontWeight: '600', color: '#000' },
   predictionSubText: { fontSize: 12, color: '#666', marginTop: 2 },
