@@ -1,40 +1,75 @@
 // app/(tabs)/map.tsx
 import { useState, useEffect } from "react";
-import { View } from "react-native";
+import { View, TextInput, StyleSheet, TouchableOpacity, Text, Keyboard } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { router, useLocalSearchParams } from "expo-router";
+import { MaterialIcons } from '@expo/vector-icons';
 
-// Import new sheet component
 import AddPinSheet from "@/components/AddPinSheet";
 
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
   const params = useLocalSearchParams();
 
-  // State to control the bottom sheet
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
   const [selectedLng, setSelectedLng] = useState<number | undefined>();
+  const [selectedTitle, setSelectedTitle] = useState<string | undefined>();
+  const [selectedAddress, setSelectedAddress] = useState<string | undefined>();
 
-  // Listen for the "Add Pin" tab button press
+  const [searchQuery, setSearchQuery] = useState('');
+  const [predictions, setPredictions] = useState<any[]>([]);
+
   useEffect(() => {
     if (params.openSheet === 'true') {
-      setSelectedLat(undefined); // Clear any old coordinates
+      setSelectedLat(undefined);
       setSelectedLng(undefined);
+      setSelectedTitle(undefined);
+      setSelectedAddress(undefined);
       setIsSheetOpen(true);
-
-      // Clear the parameter so it doesn't trigger again randomly
       router.setParams({ openSheet: '' });
     }
   }, [params.openSheet]);
 
-  // Handler: Open sheet with coordinates on long press
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setSelectedLat(latitude);
     setSelectedLng(longitude);
+    setSelectedTitle(undefined);
+    setSelectedAddress(undefined);
+    setIsSheetOpen(true);
+  };
+
+  const handleSearchChange = async (text: string) => {
+    setSearchQuery(text);
+    if (text.length < 3) {
+      setPredictions([]);
+      return;
+    }
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5`, {
+        headers: { 'User-Agent': 'WaymarkApp/1.0' }
+      });
+      const data = await response.json();
+      setPredictions(data);
+    } catch (e) {
+      console.error("Autocomplete error:", e);
+    }
+  };
+
+  const handleSelectPlace = (place: any) => {
+    const mainText = place.name || place.display_name.split(',')[0];
+
+    setSelectedTitle(mainText);
+    setSelectedAddress(place.display_name);
+    setSelectedLat(parseFloat(place.lat));
+    setSelectedLng(parseFloat(place.lon));
+
+    setSearchQuery('');
+    setPredictions([]);
+    Keyboard.dismiss();
     setIsSheetOpen(true);
   };
 
@@ -61,26 +96,99 @@ export default function MapScreen() {
             title={pin.title}
             description={pin.caption}
             onCalloutPress={() => {
-              // Navigate to edit/view details
               router.push({
                 pathname: "/edit-caption",
-                params: {
-                  pinId: pin._id,
-                  currentCaption: pin.caption
-                },
+                params: { pinId: pin._id, currentCaption: pin.caption },
               });
             }}
           />
         ))}
       </MapView>
 
-      {/* The new Bottom Sheet Overlay */}
+      <View style={styles.searchOverlay}>
+        <View style={styles.searchContainer}>
+          <MaterialIcons name="search" size={24} color="#888" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search for a place..."
+            placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={handleSearchChange}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); }}>
+              <MaterialIcons name="close" size={20} color="#888" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {predictions.length > 0 && (
+          <View style={styles.predictionsContainer}>
+            {predictions.map((p, index) => (
+              <TouchableOpacity
+                key={p.place_id || index}
+                style={styles.predictionItem}
+                onPress={() => handleSelectPlace(p)}
+              >
+                <Text style={styles.predictionMainText} numberOfLines={1}>
+                  {p.name || p.display_name.split(',')[0]}
+                </Text>
+                <Text style={styles.predictionSubText} numberOfLines={1}>
+                  {p.display_name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
       <AddPinSheet
         isOpen={isSheetOpen}
         onClose={() => setIsSheetOpen(false)}
         initialLat={selectedLat}
         initialLng={selectedLng}
+        initialTitle={selectedTitle}
+        initialAddress={selectedAddress}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  searchOverlay: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    paddingHorizontal: 15,
+    height: 50,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  searchIcon: { marginRight: 10 },
+  searchInput: { flex: 1, fontSize: 16, color: '#000' },
+  predictionsContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginTop: 8,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    overflow: 'hidden',
+  },
+  predictionItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  predictionMainText: { fontSize: 16, fontWeight: '600', color: '#000' },
+  predictionSubText: { fontSize: 12, color: '#666', marginTop: 2 },
+});
