@@ -3,7 +3,6 @@ import React from 'react';
 import { TouchableOpacity } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-// 1. Swap the import to MaterialIcons
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { Colors } from '@/constants/theme';
@@ -52,15 +51,15 @@ export default function TabLayout() {
       <Tabs.Screen
         name="create"
         options={{
-          title: 'Add Pin',
+          title: 'Create',
           tabBarIcon: ({ color }) => (
             <MaterialIcons size={28} name="add-box" color={color} />
           ),
-          tabBarButton: (props) => (
+          // Adding ': any' tells TypeScript to stop throwing the type clashing error!
+          tabBarButton: ({ onPress, ...props }: any) => (
             <TouchableOpacity
               {...props}
-              onPress={(e) => {
-                e.preventDefault();
+              onPress={() => {
                 router.push('/(tabs)/map?openSheet=true');
               }}
             />

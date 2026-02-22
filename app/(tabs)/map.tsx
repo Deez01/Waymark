@@ -161,7 +161,7 @@ export default function MapScreen() {
 }
 
 const styles = StyleSheet.create({
-  searchOverlay: { position: 'absolute', top: 60, left: 20, right: 20, zIndex: 10 },
+  searchOverlay: { position: 'absolute', top: 45, left: 20, right: 20, zIndex: 10 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16, color: '#000' },
