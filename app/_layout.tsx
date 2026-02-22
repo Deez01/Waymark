@@ -3,7 +3,6 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import "react-native-reanimated";
-// 1. Add this new import for bottom sheet gestures:
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";

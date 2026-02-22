@@ -15,7 +15,7 @@ export default function TabLayout() {
   const router = useRouter();
   const currentUser = useQuery(api.users.getCurrentUser);
   const { height } = useWindowDimensions();
-  const dynamicTabHeight = height * 0.10;
+  const dynamicTabHeight = height * 0.1;
 
   if (currentUser === undefined) return null;
   if (!currentUser) return <Redirect href="/sign-in" />;
@@ -31,7 +31,17 @@ export default function TabLayout() {
         tabBarStyle: {
           height: dynamicTabHeight,
           paddingBottom: dynamicTabHeight * 0.2,
-          paddingTop: dynamicTabHeight * 0.1,
+          paddingTop: dynamicTabHeight * 0.05,
+
+          backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          borderTopWidth: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+
+        tabBarLabelStyle: {
+          marginTop: 8,
+          fontSize: 11,
         },
 
       }}>

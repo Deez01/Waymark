@@ -8,10 +8,15 @@ import { router, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from '@expo/vector-icons';
 
 import AddPinSheet from "@/components/AddPinSheet";
+import { Colors } from "@/constants/theme";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
   const params = useLocalSearchParams();
+  const colorScheme = useColorScheme();
+
+  const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
@@ -19,9 +24,7 @@ export default function MapScreen() {
   const [selectedTitle, setSelectedTitle] = useState<string | undefined>();
   const [selectedAddress, setSelectedAddress] = useState<string | undefined>();
 
-  // State to trigger the sheet minimizing when interacting with the map
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
 
@@ -55,9 +58,7 @@ export default function MapScreen() {
       const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en`, {
         headers: { 'User-Agent': 'WaymarkApp/1.0' }
       });
-
       if (!response.ok) return;
-
       const textResponse = await response.text();
       const data = JSON.parse(textResponse);
       setPredictions(data);
@@ -68,12 +69,10 @@ export default function MapScreen() {
 
   const handleSelectPlace = (place: any) => {
     const mainText = place.name || place.display_name.split(',')[0];
-
     setSelectedTitle(mainText);
     setSelectedAddress(place.display_name);
     setSelectedLat(parseFloat(place.lat));
     setSelectedLng(parseFloat(place.lon));
-
     setSearchQuery('');
     setPredictions([]);
     Keyboard.dismiss();
@@ -91,10 +90,10 @@ export default function MapScreen() {
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
+        customMapStyle={colorScheme === 'dark' ? darkMapStyle : lightMapStyle}
         onLongPress={handleLongPress}
         onPress={() => Keyboard.dismiss()}
         onPanDrag={() => {
-          // FIX: Only minimize the sheet if the user has actually opened it!
           if (isSheetOpen) {
             setMinimizeTrigger(prev => prev + 1);
           }
@@ -103,12 +102,10 @@ export default function MapScreen() {
         {pins?.map((pin: any) => (
           <Marker
             key={pin._id}
-            coordinate={{
-              latitude: pin.lat,
-              longitude: pin.lng,
-            }}
+            coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             title={pin.title}
             description={pin.caption}
+            pinColor="#f66151" // GNOME Pink/Rose
             onCalloutPress={() => {
               router.push({
                 pathname: "/edit-caption",
@@ -120,34 +117,40 @@ export default function MapScreen() {
       </MapView>
 
       <View style={styles.searchOverlay}>
-        <View style={styles.searchContainer}>
-          <MaterialIcons name="search" size={24} color="#888" style={styles.searchIcon} />
+        <View style={[
+          styles.searchContainer,
+          {
+            backgroundColor: theme.background,
+            shadowColor: colorScheme === 'dark' ? '#000' : '#888'
+          }
+        ]}>
+          <MaterialIcons name="search" size={24} color={theme.icon} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search for a place..."
-            placeholderTextColor="#888"
+            placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
             value={searchQuery}
             onChangeText={handleSearchChange}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); }}>
-              <MaterialIcons name="close" size={20} color="#888" />
+              <MaterialIcons name="close" size={20} color={theme.icon} />
             </TouchableOpacity>
           )}
         </View>
 
         {predictions.length > 0 && (
-          <View style={styles.predictionsContainer}>
+          <View style={[styles.predictionsContainer, { backgroundColor: theme.background }]}>
             {predictions.map((p, index) => (
               <TouchableOpacity
                 key={p.place_id || index}
-                style={styles.predictionItem}
+                style={[styles.predictionItem, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#f0f0f0' }]}
                 onPress={() => handleSelectPlace(p)}
               >
-                <Text style={styles.predictionMainText} numberOfLines={1}>
+                <Text style={[styles.predictionMainText, { color: theme.text }]} numberOfLines={1}>
                   {p.name || p.display_name.split(',')[0]}
                 </Text>
-                <Text style={styles.predictionSubText} numberOfLines={1}>
+                <Text style={[styles.predictionSubText, { color: colorScheme === 'dark' ? '#77767b' : '#9a9996' }]} numberOfLines={1}>
                   {p.display_name}
                 </Text>
               </TouchableOpacity>
@@ -163,19 +166,46 @@ export default function MapScreen() {
         initialLng={selectedLng}
         initialTitle={selectedTitle}
         initialAddress={selectedAddress}
-        minimizeTrigger={minimizeTrigger} // Pass the trigger down
+        minimizeTrigger={minimizeTrigger}
       />
     </View>
   );
 }
 
+// --- FINAL MISTY ADWAITA MAP STYLES WITH GRAY STREETS ---
+
+const darkMapStyle = [
+  { "elementType": "geometry", "stylers": [{ "color": "#2d2d2d" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#77767b" }] },
+  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#2d2d2d" }] },
+  { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#303030" }] },
+  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#26a269" }, { "lightness": -45 }, { "saturation": -20 }] },
+  // Streets: A lighter Slate Gray for visibility
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#424242" }] },
+  { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#4f4f4f" }] },
+  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9a9996" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#1a5fb4" }, { "lightness": -20 }, { "saturation": -30 }] }
+];
+
+const lightMapStyle = [
+  { "elementType": "geometry", "stylers": [{ "color": "#faf9f8" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#5e5c64" }] },
+  { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#faf9f8" }] },
+  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#8ff0a4" }, { "lightness": 30 }, { "saturation": -30 }] },
+  // Streets: Light Gray with a very faint outline
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#eeeeee" }] },
+  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#dcdcdc" }] },
+  { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#e0e0e0" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#99c1f1" }, { "lightness": 20 }, { "saturation": -20 }] }
+];
+
 const styles = StyleSheet.create({
   searchOverlay: { position: 'absolute', top: 45, left: 20, right: 20, zIndex: 10 },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   searchIcon: { marginRight: 10 },
-  searchInput: { flex: 1, fontSize: 16, color: '#000' },
-  predictionsContainer: { backgroundColor: '#fff', borderRadius: 16, marginTop: 8, elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
-  predictionItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  predictionMainText: { fontSize: 16, fontWeight: '600', color: '#000' },
-  predictionSubText: { fontSize: 12, color: '#666', marginTop: 2 },
+  searchInput: { flex: 1, fontSize: 16 },
+  predictionsContainer: { borderRadius: 16, marginTop: 8, elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
+  predictionItem: { padding: 14, borderBottomWidth: 1 },
+  predictionMainText: { fontSize: 16, fontWeight: '600' },
+  predictionSubText: { fontSize: 12, marginTop: 2 },
 });
