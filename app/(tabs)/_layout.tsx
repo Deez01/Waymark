@@ -1,6 +1,6 @@
 import { Redirect, Tabs, useRouter } from 'expo-router';
 import React from 'react';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, useWindowDimensions } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const currentUser = useQuery(api.users.getCurrentUser);
+  const { height } = useWindowDimensions();
+  const dynamicTabHeight = height * 0.10;
 
   if (currentUser === undefined) return null;
   if (!currentUser) return <Redirect href="/sign-in" />;
@@ -25,6 +27,13 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
         tabBarButton: HapticTab,
+
+        tabBarStyle: {
+          height: dynamicTabHeight,
+          paddingBottom: dynamicTabHeight * 0.2,
+          paddingTop: dynamicTabHeight * 0.1,
+        },
+
       }}>
 
       {/* 1. Map Tab */}

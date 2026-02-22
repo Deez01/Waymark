@@ -19,6 +19,9 @@ export default function MapScreen() {
   const [selectedTitle, setSelectedTitle] = useState<string | undefined>();
   const [selectedAddress, setSelectedAddress] = useState<string | undefined>();
 
+  // State to trigger the sheet minimizing when interacting with the map
+  const [minimizeTrigger, setMinimizeTrigger] = useState(0);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
 
@@ -49,15 +52,14 @@ export default function MapScreen() {
       return;
     }
     try {
-      // Added accept-language=es to help with Spanish locations
       const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en`, {
         headers: { 'User-Agent': 'WaymarkApp/1.0' }
       });
 
-      if (!response.ok) return; // Fail silently instead of crashing if the API is overwhelmed
+      if (!response.ok) return;
 
       const textResponse = await response.text();
-      const data = JSON.parse(textResponse); // Safely parse it
+      const data = JSON.parse(textResponse);
       setPredictions(data);
     } catch (e) {
       console.log("Autocomplete error safely caught:", e);
@@ -90,7 +92,13 @@ export default function MapScreen() {
           longitudeDelta: 0.05,
         }}
         onLongPress={handleLongPress}
-        onPress={() => Keyboard.dismiss()} // Hides keyboard when tapping the map!
+        onPress={() => Keyboard.dismiss()}
+        onPanDrag={() => {
+          // FIX: Only minimize the sheet if the user has actually opened it!
+          if (isSheetOpen) {
+            setMinimizeTrigger(prev => prev + 1);
+          }
+        }}
       >
         {pins?.map((pin: any) => (
           <Marker
@@ -155,6 +163,7 @@ export default function MapScreen() {
         initialLng={selectedLng}
         initialTitle={selectedTitle}
         initialAddress={selectedAddress}
+        minimizeTrigger={minimizeTrigger} // Pass the trigger down
       />
     </View>
   );

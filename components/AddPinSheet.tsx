@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Modal, Alert, Dimensions, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Modal, Alert, Dimensions, Platform, BackHandler } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
 import * as Location from 'expo-location';
@@ -13,17 +13,14 @@ interface AddPinSheetProps {
   initialLng?: number;
   initialTitle?: string;
   initialAddress?: string;
+  minimizeTrigger?: number;
 }
 
-export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress }: AddPinSheetProps) {
+export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress, minimizeTrigger }: AddPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
 
-  // 1. Set a dynamic state for the expanded height, defaulting to a standard size
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
-
-  // 2. The snap points now automatically update when dynamicSnap changes
-  const snapPoints = useMemo(() => ['45%', dynamicSnap], [dynamicSnap]);
-
+  const snapPoints = useMemo(() => ['3.5%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
 
   const createPin = useMutation(api.pins.createPin);
@@ -50,31 +47,64 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     return acc;
   }, {}) : {};
 
-  // --- THE ULTIMATE DYNAMIC KEYBOARD FIX ---
+  // --- STAGED PULLING BYPASS LOGIC ---
+  const programmaticSnapRef = useRef(false);
+  const programmaticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // We use this function instead of bottomSheetRef.current?.snapToIndex 
+  // so the sheet knows we are doing this via code, not a physical swipe
+  const snapTo = (index: number) => {
+    programmaticSnapRef.current = true;
+    bottomSheetRef.current?.snapToIndex(index);
+
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    programmaticTimeoutRef.current = setTimeout(() => {
+      programmaticSnapRef.current = false;
+    }, 100);
+  };
+
+  // Shrink to handle if the map is touched/dragged
+  useEffect(() => {
+    if (minimizeTrigger && minimizeTrigger > 0) {
+      Keyboard.dismiss();
+      snapTo(0);
+    }
+  }, [minimizeTrigger]);
+
+  // Catch Hardware Back Button to shrink sheet instead of exiting app
+  useEffect(() => {
+    const backAction = () => {
+      if (sheetIndex > 0) {
+        snapTo(0);
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [sheetIndex]);
+
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       let kbHeight = e.endCoordinates.height;
 
-      // Bypass the Android bug where kbHeight incorrectly reports as 0 or a tiny number
       if (Platform.OS === 'android' && kbHeight < 100) {
-        const screenHeight = Dimensions.get('screen').height; // True physical height
-        const windowHeight = Dimensions.get('window').height; // Squished app height
-        kbHeight = screenHeight - windowHeight; // The exact height of the keyboard!
+        const screenHeight = Dimensions.get('screen').height;
+        const windowHeight = Dimensions.get('window').height;
+        kbHeight = screenHeight - windowHeight;
       }
 
-      // The sheet sits at the absolute bottom, so the keyboard covers the bottom 'kbHeight' pixels.
-      // To keep the form perfectly visible, the sheet must be exactly the keyboard's height + the form's height (approx 380px).
       const perfectHeight = kbHeight + 320;
       setDynamicSnap(perfectHeight);
 
-      // Snap to it after a micro-delay to ensure the new dynamicSnap state has registered
       setTimeout(() => {
-        bottomSheetRef.current?.snapToIndex(1);
+        snapTo(2);
       }, 10);
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
-      bottomSheetRef.current?.snapToIndex(0); // Drops to 45% automatically
+      snapTo(1);
     });
 
     return () => {
@@ -85,7 +115,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
   useEffect(() => {
     if (isOpen) {
-      bottomSheetRef.current?.snapToIndex(0);
+      snapTo(1);
 
       if (initialTitle) setTitle(initialTitle);
       if (initialAddress) setAddress(initialAddress);
@@ -201,6 +231,19 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       enablePanDownToClose
       onClose={onClose}
       onChange={(index) => setSheetIndex(index)}
+      onAnimate={(fromIndex, toIndex) => {
+        // Ignore programmatic snaps (like the keyboard opening or hitting back)
+        if (programmaticSnapRef.current) return;
+
+        // If user pulls UP hard, forcing it to skip a stage
+        if (toIndex - fromIndex > 1) {
+          snapTo(fromIndex + 1);
+        }
+        // If user pulls DOWN hard, forcing it to skip a stage
+        else if (fromIndex - toIndex > 1) {
+          snapTo(fromIndex - 1);
+        }
+      }}
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.handleIndicator}
     >
@@ -226,7 +269,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
               placeholderTextColor="#888"
               value={title}
               onChangeText={setTitle}
-              onFocus={() => bottomSheetRef.current?.snapToIndex(1)}
+              onFocus={() => snapTo(2)}
             />
             <Text style={styles.dateText}>{currentDate}</Text>
           </View>
@@ -253,15 +296,15 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
             </View>
           )}
 
-          <View style={[styles.notesAndSaveRow, sheetIndex === 1 && styles.notesAndSaveRowExpanded]}>
+          <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
             <TextInput
-              style={[styles.notesInput, sheetIndex === 1 && styles.notesInputExpanded]}
+              style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded]}
               placeholder="Add Notes..."
               placeholderTextColor="#aaa"
               multiline={true}
               value={description}
               onChangeText={setDescription}
-              onFocus={() => bottomSheetRef.current?.snapToIndex(1)}
+              onFocus={() => snapTo(2)}
             />
 
             <TouchableOpacity
