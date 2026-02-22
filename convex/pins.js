@@ -27,6 +27,46 @@ export const getAllPins = query({
   },
 });
 
+export const getSharedPins = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const userIdStr = args.userId.toString();
+
+    // Get accepted friendships
+    const friendships = await ctx.db
+      .query("friendships")
+      .withIndex("by_status", (q) => q.eq("status", "accepted"))
+      .collect();
+    
+    // Extract friend user IDs
+    const friendIds = friendships
+      .filter(
+        (f) => 
+          f.userId1.equals(args.userId) || 
+          f.userId2.equals(args.userId)
+      )
+      .map((f) => 
+      f.userId1.equals(args.userId) ? f.userId2 : f.userId1
+      )
+      .map((id) => id.toString());
+
+    // Allowed pin owners = self + friends
+    const allowedOwnerIds = new Set([
+      userIdStr, 
+      ...friendIds,
+    ]);
+
+    // Fetch and filter pins
+    const pins = await ctx.db.query("pins").collect();
+
+    return pins.filter((pin) => 
+      allowedOwnerIds.has(pin.ownerId)
+    );
+  },
+});
+
 export const createPin = mutation({
   args: {
     ownerId: v.string(),

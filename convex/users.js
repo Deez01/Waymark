@@ -1,8 +1,8 @@
 // Name: Bryan Estrada-Cordoba
 // convex/users.js
-import { mutation, query } from "./_generated/server";
-import { ConvexError, v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { ConvexError, v } from "convex/values";
+import { mutation, query } from "./_generated/server";
 
 const normalizeIdentifier = (value) => value.trim().toLowerCase();
 
