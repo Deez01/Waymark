@@ -1,8 +1,10 @@
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect, Tabs, useRouter } from 'expo-router';
 import React from 'react';
+import { TouchableOpacity, useWindowDimensions } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { MaterialIcons } from '@expo/vector-icons';
+
 import { Colors } from '@/constants/theme';
 import { api } from '@/convex/_generated/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -10,70 +12,98 @@ import { useQuery } from 'convex/react';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
   const currentUser = useQuery(api.users.getCurrentUser);
+  const { height } = useWindowDimensions();
+  const dynamicTabHeight = height * 0.1;
 
-  if (currentUser === undefined) {
-    return null;
-  }
-
-  if (!currentUser) {
-    return <Redirect href="/sign-in" />;
-  }
-
-  if (!currentUser.profileComplete) {
-    return <Redirect href="/onboarding" />;
-  }
+  if (currentUser === undefined) return null;
+  if (!currentUser) return <Redirect href="/sign-in" />;
+  if (!currentUser.profileComplete) return <Redirect href="/onboarding" />;
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: '#62a0ea',
         headerShown: false,
         tabBarButton: HapticTab,
+
+        tabBarStyle: {
+          height: dynamicTabHeight,
+          paddingBottom: dynamicTabHeight * 0.2,
+          paddingTop: dynamicTabHeight * 0.05,
+
+          backgroundColor: colorScheme === 'dark' ? Colors.dark.background : Colors.light.background,
+          borderTopWidth: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+
+        tabBarLabelStyle: {
+          marginTop: 8,
+          fontSize: 11,
+        },
+
       }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
-          ),
-        }}
-      />
+
+      {/* 1. Map Tab */}
       <Tabs.Screen
         name="map"
         options={{
           title: 'Map',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="map.fill" color={color} />,
+          tabBarIcon: ({ color }) => <MaterialIcons size={28} name="map" color={color} />,
         }}
       />
-      <Tabs.Screen 
+
+      {/* 2. Friends Tab */}
+      <Tabs.Screen
         name="friends"
         options={{
-          title: "Friends", 
+          title: "Friends",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.2.fill" color={color} />
+            <MaterialIcons size={28} name="people" color={color} />
           ),
         }}
       />
 
-      {/* NEW: Achievements / Badges tab */}
+      {/* 3. Create Pin Tab */}
+      <Tabs.Screen
+        name="create"
+        options={{
+          title: 'Create',
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons size={28} name="add-box" color={color} />
+          ),
+          // Adding ': any' tells TypeScript to stop throwing the type clashing error!
+          tabBarButton: ({ onPress, ...props }: any) => (
+            <TouchableOpacity
+              {...props}
+              onPress={() => {
+                router.push('/(tabs)/map?openSheet=true');
+              }}
+            />
+          ),
+        }}
+      />
+
+      {/* 4. Badges Tab */}
       <Tabs.Screen
         name="achievements"
         options={{
           title: 'Badges',
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="star.fill" color={color} />
+            <MaterialIcons size={28} name="star" color={color} />
           ),
         }}
       />
-      
+
+      {/* 5. Profile Tab */}
       <Tabs.Screen
-        name="Profile"
+        name="user"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="person.fill" color={color} />
+            <MaterialIcons size={28} name="person" color={color} />
           ),
         }}
       />

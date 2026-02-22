@@ -3,10 +3,12 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import "react-native-reanimated";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+
 export const unstable_settings = {
   anchor: "(tabs)",
 };
@@ -25,18 +27,21 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   return (
-    <ConvexAuthProvider client={convex} storage={tokenStorage}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="modal"
-            options={{ presentation: 'modal', title: 'Modal' }}
-          />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </ConvexAuthProvider>
+    // 2. Keep GestureHandlerRootView from your branch for bottom sheet
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* 3. Keep ConvexAuthProvider and auth screens from the main branch */}
+      <ConvexAuthProvider client={convex} storage={tokenStorage}>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="modal"
+              options={{ presentation: 'modal', title: 'Modal' }}
+            />
+          </Stack>
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </ConvexAuthProvider>
+    </GestureHandlerRootView>
   );
 }
