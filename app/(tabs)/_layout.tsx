@@ -79,7 +79,11 @@ export default function TabLayout() {
             <TouchableOpacity
               {...props}
               onPress={() => {
-                router.push('/(tabs)/map?openSheet=true');
+                // Routes the Create button to the AddPinSheet
+                router.push({
+                  pathname: '/(tabs)',
+                  params: { openSheet: 'true' }
+                } as any);
               }}
             />
           ),
