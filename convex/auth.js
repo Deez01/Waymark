@@ -53,7 +53,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       const existingByEmail = await ctx.db
         .query("users")
         .withIndex("by_email", (q) => q.eq("email", email))
-        .first();
+        .unique(); // Enforce unique email
 
       if (existingByEmail) {
         throw new ConvexError("Email already in use.");
@@ -62,18 +62,17 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       const existingByUsername = await ctx.db
         .query("users")
         .withIndex("by_username", (q) => q.eq("username", username))
-        .first();
+        .unique(); // Enfore Unique username
 
       if (existingByUsername) {
         throw new ConvexError("Username already taken.");
       }
 
       return await ctx.db.insert("users", {
-        ...args.profile,
         email,
         username,
         profileComplete: false,
-      });
+      })
     },
   },
 });
