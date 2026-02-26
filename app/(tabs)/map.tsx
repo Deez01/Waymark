@@ -42,7 +42,11 @@ export default function MapScreen() {
       setSelectedLng(undefined);
       setSelectedTitle(undefined);
       setSelectedAddress(undefined);
+
       setIsSheetOpen(true);
+      setIsViewSheetOpen(false);
+      setSelectedPin(null);
+
       router.setParams({ openSheet: '' });
     }
   }, [params.openSheet]);
@@ -53,7 +57,10 @@ export default function MapScreen() {
     setSelectedLng(longitude);
     setSelectedTitle(undefined);
     setSelectedAddress(undefined);
+
     setIsSheetOpen(true);
+    setIsViewSheetOpen(false);
+    setSelectedPin(null);
   };
 
   const handleSearchChange = async (text: string) => {
@@ -84,7 +91,10 @@ export default function MapScreen() {
     setSearchQuery('');
     setPredictions([]);
     Keyboard.dismiss();
+
     setIsSheetOpen(true);
+    setIsViewSheetOpen(false);
+    setSelectedPin(null);
   };
 
   return (
