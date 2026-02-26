@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from '@expo/vector-icons';
 
 import AddPinSheet from "@/components/AddPinSheet";
+import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
@@ -26,6 +27,9 @@ export default function MapScreen() {
   const [selectedLng, setSelectedLng] = useState<number | undefined>();
   const [selectedTitle, setSelectedTitle] = useState<string | undefined>();
   const [selectedAddress, setSelectedAddress] = useState<string | undefined>();
+
+  const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
+  const [selectedPin, setSelectedPin] = useState<any>(null);
 
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,9 +111,14 @@ export default function MapScreen() {
             key={pin._id}
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             title={pin.title}
-            description={pin.caption}
             // Pins set to Adwaita Red for better visibility
             pinColor={adwaitaRed}
+            onPress={(e) => {
+              e.stopPropagation(); // Prevent the map's onPress from firing
+              setSelectedPin(pin);
+              setIsViewSheetOpen(true);
+              setIsSheetOpen(false);
+            }}
             onCalloutPress={() => {
               router.push({
                 pathname: "/edit-caption",
@@ -171,6 +180,15 @@ export default function MapScreen() {
         initialTitle={selectedTitle}
         initialAddress={selectedAddress}
         minimizeTrigger={minimizeTrigger}
+      />
+
+      <ViewEditPinSheet
+        isOpen={isViewSheetOpen}
+        onClose={() => {
+          setIsViewSheetOpen(false);
+          setSelectedPin(null);
+        }}
+        pin={selectedPin}
       />
     </View>
   );
