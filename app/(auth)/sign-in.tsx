@@ -217,8 +217,8 @@ export default function SignInScreen() {
               {busy
                 ? "Working…"
                 : mode === "signIn"
-                ? "Sign in"
-                : "Create account"}
+                  ? "Sign in"
+                  : "Create account"}
             </ThemedText>
           </Pressable>
 
