@@ -1,4 +1,4 @@
-// app/(tabs)/map.tsx
+// app/(tabs)/index.tsx
 import { useState, useEffect } from "react";
 import { View, TextInput, StyleSheet, TouchableOpacity, Text, Keyboard } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
