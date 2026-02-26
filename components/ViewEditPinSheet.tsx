@@ -1,18 +1,23 @@
 // components/ViewEditPinSheet.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { useMutation } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 interface ViewEditPinSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  pin: any | null; // Pass the selected pin object
+  pin: any | null;
+  minimizeTrigger?: number;
+  openTrigger?: number; // Forces the sheet to snap up even if it's already "open" at 4%
 }
 
-export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSheetProps) {
+export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
@@ -21,24 +26,60 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSh
   const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
 
-  // Local state for edits
+  const updatePin = useMutation(api.pins.updatePin);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync state when a new pin is passed in or sheet opens
+  // --- Smooth Snapping Logic (from AddPinSheet) ---
+  const programmaticSnapRef = useRef(false);
+  const programmaticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const snapTo = (index: number) => {
+    programmaticSnapRef.current = true;
+    bottomSheetRef.current?.snapToIndex(index);
+
+    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
+    programmaticTimeoutRef.current = setTimeout(() => {
+      programmaticSnapRef.current = false;
+    }, 100);
+  };
+
+  // 1. Minimize when map is dragged
+  useEffect(() => {
+    if (minimizeTrigger && minimizeTrigger > 0) {
+      Keyboard.dismiss();
+      snapTo(0);
+    }
+  }, [minimizeTrigger]);
+
+  // 2. Hardware back button support
+  useEffect(() => {
+    const backAction = () => {
+      if (sheetIndex > 0) {
+        snapTo(0);
+        return true;
+      }
+      return false;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [sheetIndex]);
+
+  // 3. Sync state when a new pin is passed in or openTrigger fires
   useEffect(() => {
     if (isOpen && pin) {
       setTitle(pin.title || '');
-      setDescription(pin.caption || pin.description || ''); // Handle however you saved the caption/notes
-      bottomSheetRef.current?.snapToIndex(1);
+      setDescription(pin.caption || pin.description || '');
+      snapTo(1); // Force snap up whenever triggered
     } else {
       bottomSheetRef.current?.close();
       Keyboard.dismiss();
     }
-  }, [isOpen, pin]);
+  }, [isOpen, pin, openTrigger]); // Watch openTrigger!
 
-  // Adjust snap points for keyboard (similar to AddPinSheet)
+  // 4. Keyboard avoiding logic
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       let kbHeight = e.endCoordinates.height;
@@ -48,11 +89,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSh
         kbHeight = screenHeight - windowHeight;
       }
       setDynamicSnap(kbHeight + 320);
-      setTimeout(() => bottomSheetRef.current?.snapToIndex(2), 10);
+      setTimeout(() => snapTo(2), 10);
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
-      bottomSheetRef.current?.snapToIndex(1);
+      snapTo(1);
     });
 
     return () => {
@@ -65,10 +106,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSh
     if (!pin) return;
     setIsSubmitting(true);
     try {
-      // TODO: Hook this up to your Convex mutation to update the pin
-      // Example: await updatePin({ id: pin._id, title, description });
-      console.log("Updating pin...", { id: pin._id, title, description });
-
+      await updatePin({
+        pinId: pin._id,
+        title,
+        description,
+        caption: description
+      });
       onClose();
     } catch (e: any) {
       console.error('Failed to update pin: ', e.message);
@@ -87,11 +130,20 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSh
       enablePanDownToClose
       onClose={onClose}
       onChange={setSheetIndex}
+      // Staged Animation Logic (from AddPinSheet)
+      onAnimate={(fromIndex, toIndex) => {
+        if (programmaticSnapRef.current) return;
+        if (toIndex - fromIndex > 1) {
+          snapTo(fromIndex + 1);
+        }
+        else if (fromIndex - toIndex > 1) {
+          snapTo(fromIndex - 1);
+        }
+      }}
       backgroundStyle={[styles.sheetBackground, { backgroundColor: theme.background }]}
       handleIndicatorStyle={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]}
     >
       <BottomSheetScrollView style={styles.scrollWrapper} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        {/* Images Placeholder */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
           <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
             <IconSymbol name="plus" size={32} color={theme.text} />
@@ -106,6 +158,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSh
               placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
               value={title}
               onChangeText={setTitle}
+              onFocus={() => snapTo(2)}
             />
           </View>
 
@@ -126,6 +179,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin }: ViewEditPinSh
               multiline={true}
               value={description}
               onChangeText={setDescription}
+              onFocus={() => snapTo(2)}
             />
 
             <TouchableOpacity

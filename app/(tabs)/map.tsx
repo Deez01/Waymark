@@ -30,6 +30,7 @@ export default function MapScreen() {
 
   const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<any>(null);
+  const [viewPinTrigger, setViewPinTrigger] = useState(0);
 
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,7 +102,7 @@ export default function MapScreen() {
         onLongPress={handleLongPress}
         onPress={() => Keyboard.dismiss()}
         onPanDrag={() => {
-          if (isSheetOpen) {
+          if (isSheetOpen || isViewSheetOpen) {
             setMinimizeTrigger(prev => prev + 1);
           }
         }}
@@ -117,6 +118,7 @@ export default function MapScreen() {
               e.stopPropagation(); // Prevent the map's onPress from firing
               setSelectedPin(pin);
               setIsViewSheetOpen(true);
+              setViewPinTrigger(prev => prev + 1);
               setIsSheetOpen(false);
             }}
             onCalloutPress={() => {
@@ -189,6 +191,8 @@ export default function MapScreen() {
           setSelectedPin(null);
         }}
         pin={selectedPin}
+        minimizeTrigger={minimizeTrigger}
+        openTrigger={viewPinTrigger}
       />
     </View>
   );
