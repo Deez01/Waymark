@@ -89,6 +89,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (!isOpen) return;
+
       let kbHeight = e.endCoordinates.height;
 
       if (Platform.OS === 'android' && kbHeight < 100) {
@@ -106,6 +108,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      if (!isOpen) return;
       snapTo(1);
     });
 
@@ -113,7 +116,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, []);
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {

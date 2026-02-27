@@ -96,6 +96,8 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (!isOpen) return;
+
       let kbHeight = e.endCoordinates.height;
       if (Platform.OS === 'android' && kbHeight < 100) {
         const screenHeight = Dimensions.get('screen').height;
@@ -107,6 +109,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      if (!isOpen) return;
       snapTo(1);
     });
 
@@ -114,7 +117,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, []);
+  }, [isOpen]);
 
   // --- Tag Logic ---
   const toggleTagSelection = async (tag: any) => {

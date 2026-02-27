@@ -70,7 +70,7 @@ export default function MapScreen() {
       return;
     }
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en`, {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en&lat=33.783&lon=-118.114`, {
         headers: { 'User-Agent': 'WaymarkApp/1.0' }
       });
       if (!response.ok) return;
