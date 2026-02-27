@@ -1,6 +1,7 @@
 // convex/pins.js
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { api } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 function assertAuthed(userId) {
@@ -23,7 +24,7 @@ export const createPin = mutation({
   },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
-    const ownerId = userId.toString(); // pins.ownerId is a string in your schema
+    const ownerId = userId.toString(); // pins.ownerId is string
 
     const pinId = await ctx.db.insert("pins", {
       ownerId,
@@ -39,6 +40,9 @@ export const createPin = mutation({
       pictures: args.pictures,
       tags: args.tags,
     });
+
+    // Automatically evaluate achievements after creating a pin
+    await ctx.runMutation(api.achievements.evaluateAndAward, {});
 
     return pinId;
   },
