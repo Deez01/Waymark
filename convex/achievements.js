@@ -1,123 +1,24 @@
-// Bare-bones achievements / badges system.
-// - list all possible achievements (with requirements)
-// - show progress toward each
-// - persist earned badges in a table (userBadges)
-// - allow easy demo/testing with a seed mutation (see convex/demo.js)
-
-import { v } from "convex/values";
+// convex/achievements.js
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 
-// --- Achievement definitions ---
-// Keep these server-side for now so the app works even before you build an admin UI.
-// Keys must remain stable once you ship them, since they are stored in userBadges.badgeKey.
-
 export const ACHIEVEMENTS = [
-  // Pin count ladder
-  {
-    key: "pins_1",
-    name: "First Drop",
-    description: "Create your first pin.",
-    category: "Pinning",
-    requirementType: "pins_total",
-    threshold: 1,
-  },
-  {
-    key: "pins_5",
-    name: "Trail Starter",
-    description: "Drop 5 pins.",
-    category: "Pinning",
-    requirementType: "pins_total",
-    threshold: 5,
-  },
-  {
-    key: "pins_25",
-    name: "Local Legend",
-    description: "Drop 25 pins.",
-    category: "Pinning",
-    requirementType: "pins_total",
-    threshold: 25,
-  },
-  {
-    key: "pins_100",
-    name: "Cartographer",
-    description: "Drop 100 pins.",
-    category: "Pinning",
-    requirementType: "pins_total",
-    threshold: 100,
-  },
+  { key: "pins_1", name: "First Drop", description: "Create your first pin.", category: "Pinning", requirementType: "pins_total", threshold: 1 },
+  { key: "pins_5", name: "Trail Starter", description: "Drop 5 pins.", category: "Pinning", requirementType: "pins_total", threshold: 5 },
+  { key: "pins_25", name: "Local Legend", description: "Drop 25 pins.", category: "Pinning", requirementType: "pins_total", threshold: 25 },
+  { key: "pins_100", name: "Cartographer", description: "Drop 100 pins.", category: "Pinning", requirementType: "pins_total", threshold: 100 },
 
-  // Sharing ladder
-  {
-    key: "shares_1",
-    name: "Pass It On",
-    description: "Share a pin with a friend.",
-    category: "Sharing",
-    requirementType: "shares_total",
-    threshold: 1,
-  },
-  {
-    key: "shares_10",
-    name: "Social Scout",
-    description: "Share 10 pins.",
-    category: "Sharing",
-    requirementType: "shares_total",
-    threshold: 10,
-  },
-  {
-    key: "shares_unique_5",
-    name: "Connector",
-    description: "Share pins with 5 different friends.",
-    category: "Sharing",
-    requirementType: "shares_unique_recipients",
-    threshold: 5,
-  },
+  { key: "shares_1", name: "Pass It On", description: "Share a pin with a friend.", category: "Sharing", requirementType: "shares_total", threshold: 1 },
+  { key: "shares_10", name: "Social Scout", description: "Share 10 pins.", category: "Sharing", requirementType: "shares_total", threshold: 10 },
+  { key: "shares_unique_5", name: "Connector", description: "Share pins with 5 different friends.", category: "Sharing", requirementType: "shares_unique_recipients", threshold: 5 },
 
-  // Category-based ladders (simple substitutes for larger POI quests)
-  {
-    key: "beach_3",
-    name: "Beach Day",
-    description: "Drop 3 beach pins.",
-    category: "Explorer",
-    requirementType: "pins_category",
-    categoryValue: "beach",
-    threshold: 3,
-  },
-  {
-    key: "beach_15",
-    name: "Coastline Collector",
-    description: "Drop 15 beach pins.",
-    category: "Explorer",
-    requirementType: "pins_category",
-    categoryValue: "beach",
-    threshold: 15,
-  },
-  {
-    key: "landmark_5",
-    name: "Postcard Hunter",
-    description: "Drop 5 landmark pins.",
-    category: "Explorer",
-    requirementType: "pins_category",
-    categoryValue: "landmark",
-    threshold: 5,
-  },
-  {
-    key: "landmark_25",
-    name: "Landmark Legend",
-    description: "Drop 25 landmark pins.",
-    category: "Explorer",
-    requirementType: "pins_category",
-    categoryValue: "landmark",
-    threshold: 25,
-  },
+  { key: "beach_3", name: "Beach Day", description: "Drop 3 beach pins.", category: "Explorer", requirementType: "pins_category", categoryValue: "beach", threshold: 3 },
+  { key: "beach_15", name: "Coastline Collector", description: "Drop 15 beach pins.", category: "Explorer", requirementType: "pins_category", categoryValue: "beach", threshold: 15 },
+  { key: "landmark_5", name: "Postcard Hunter", description: "Drop 5 landmark pins.", category: "Explorer", requirementType: "pins_category", categoryValue: "landmark", threshold: 5 },
+  { key: "landmark_25", name: "Landmark Legend", description: "Drop 25 landmark pins.", category: "Explorer", requirementType: "pins_category", categoryValue: "landmark", threshold: 25 },
 ];
 
-function computeProgress({
-  pinsTotal,
-  sharesTotal,
-  sharesUniqueRecipients,
-  pinsByCategory,
-  achievement,
-}) {
+function computeProgress({ pinsTotal, sharesTotal, sharesUniqueRecipients, pinsByCategory, achievement }) {
   let current = 0;
   switch (achievement.requirementType) {
     case "pins_total":
@@ -135,90 +36,77 @@ function computeProgress({
     default:
       current = 0;
   }
-
   const target = achievement.threshold;
   const clamped = Math.min(current, target);
-  return {
-    current,
-    target,
-    ratio: target === 0 ? 1 : clamped / target,
-    complete: current >= target,
-  };
+  return { current, target, ratio: target === 0 ? 1 : clamped / target, complete: current >= target };
 }
 
-async function getStats(ctx, ownerId) {
+async function getStats(ctx, userId) {
+  const ownerIdStr = userId.toString(); // pins.ownerId is string
+
   const pins = await ctx.db
     .query("pins")
-    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+    .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerIdStr))
     .collect();
 
   const shares = await ctx.db
     .query("pinShares")
-    .withIndex("by_fromOwnerId", (q) => q.eq("fromOwnerId", ownerId))
+    .withIndex("by_fromOwnerId", (q) => q.eq("fromOwnerId", userId))
     .collect();
 
   const pinsTotal = pins.length;
   const sharesTotal = shares.length;
-  const sharesUniqueRecipients = new Set(shares.map((s) => s.toOwnerId)).size;
+  const sharesUniqueRecipients = new Set(shares.map((s) => s.toOwnerId.toString())).size;
+
   const pinsByCategory = pins.reduce((acc, p) => {
-    acc[p.category] = (acc[p.category] ?? 0) + 1;
+    const cat = p.category ?? "general";
+    acc[cat] = (acc[cat] ?? 0) + 1;
     return acc;
   }, {});
 
-  return {
-    pinsTotal,
-    sharesTotal,
-    sharesUniqueRecipients,
-    pinsByCategory,
-  };
+  return { pinsTotal, sharesTotal, sharesUniqueRecipients, pinsByCategory };
 }
 
 export const listDefinitions = query({
   args: {},
-  handler: async () => {
-    return ACHIEVEMENTS;
-  },
+  handler: async () => ACHIEVEMENTS,
 });
 
 export const getOverview = query({
-  args: { ownerId: v.string() },
-  handler: async (ctx, args) => {
-    const stats = await getStats(ctx, args.ownerId);
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
 
-    // ✅ UPDATED: userBadges now uses userId + by_userId index
+    const stats = await getStats(ctx, userId);
+
     const earned = await ctx.db
       .query("userBadges")
-      .withIndex("by_userId", (q) => q.eq("userId", args.ownerId))
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect();
 
     const earnedKeys = new Set(earned.map((b) => b.badgeKey));
 
     const achievements = ACHIEVEMENTS.map((a) => {
       const progress = computeProgress({ ...stats, achievement: a });
-      return {
-        ...a,
-        progress,
-        earned: earnedKeys.has(a.key),
-      };
+      return { ...a, progress, earned: earnedKeys.has(a.key) };
     });
 
-    return {
-      stats,
-      earnedBadges: earned,
-      achievements,
-    };
+    return { stats, earnedBadges: earned, achievements };
   },
 });
 
 export const evaluateAndAward = mutation({
-  args: { ownerId: v.string() },
-  handler: async (ctx, args) => {
-    const stats = await getStats(ctx, args.ownerId);
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
 
-    // ✅ UPDATED: userBadges now uses userId + by_userId index
+    const stats = await getStats(ctx, userId);
+
     const existing = await ctx.db
       .query("userBadges")
-      .withIndex("by_userId", (q) => q.eq("userId", args.ownerId))
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
       .collect();
 
     const existingKeys = new Set(existing.map((b) => b.badgeKey));
@@ -227,9 +115,8 @@ export const evaluateAndAward = mutation({
     for (const a of ACHIEVEMENTS) {
       const { complete } = computeProgress({ ...stats, achievement: a });
       if (complete && !existingKeys.has(a.key)) {
-        // ✅ UPDATED: insert uses userId instead of ownerId
         await ctx.db.insert("userBadges", {
-          userId: args.ownerId,
+          userId,
           badgeKey: a.key,
           earnedAt: Date.now(),
         });
@@ -237,6 +124,6 @@ export const evaluateAndAward = mutation({
       }
     }
 
-    return { newlyEarned };
+    return { ok: true, newlyEarned };
   },
 });

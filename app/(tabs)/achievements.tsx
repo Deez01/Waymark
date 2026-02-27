@@ -2,23 +2,27 @@ import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import React, { useMemo, useState } from "react";
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
-const OWNER_ID = "demo-user"; // bare-bones testing; replace with authenticated user id later
+// Option A: demo tools only enabled if explicitly turned on in .env.local
+// EXPO_PUBLIC_ENABLE_DEMO=false  (default)
+// EXPO_PUBLIC_ENABLE_DEMO=true   (to show demo buttons)
+const ENABLE_DEMO = process.env.EXPO_PUBLIC_ENABLE_DEMO === "true";
 
 export default function AchievementsScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? "light"];
 
-  // ✅ Match your backend exports
-  const overview = useQuery(api.achievements.getOverview, { ownerId: OWNER_ID });
+  // ✅ Backend now derives the current user from auth; no args needed.
+  const overview = useQuery(api.achievements.getOverview, {});
   const evaluateAndAward = useMutation(api.achievements.evaluateAndAward);
+
+  // Demo-only mutations (safe to create, but we only call them / show UI if ENABLE_DEMO)
   const seedDemoActivity = useMutation(api.demo.seedDemoActivity);
   const resetDemoBadges = useMutation(api.demo.resetDemoBadges);
 
@@ -36,7 +40,8 @@ export default function AchievementsScreen() {
       setBusy("eval");
       setStatus("Evaluating achievements…");
 
-      const res = await evaluateAndAward({ ownerId: OWNER_ID });
+      // ✅ no args now
+      const res = await evaluateAndAward({});
 
       setStatus(
         res?.newlyEarned?.length
@@ -54,13 +59,15 @@ export default function AchievementsScreen() {
     }
   };
 
-
   const onSeed = async () => {
+    if (!ENABLE_DEMO) return;
     try {
       setBusy("seed");
       setStatus("Seeding demo activity…");
 
-      const res = await seedDemoActivity({ ownerId: OWNER_ID, pinsToAdd: 12, sharesToAdd: 3 });
+      // Keep whatever args your demo mutation expects.
+      // If your demo mutation is updated to viewer-based, this can become seedDemoActivity({})
+      const res = await seedDemoActivity({ pinsToAdd: 12, sharesToAdd: 3 });
 
       setStatus(
         res?.newlyEarned?.length
@@ -78,17 +85,18 @@ export default function AchievementsScreen() {
     }
   };
 
-
   const onReset = async () => {
+    if (!ENABLE_DEMO) return;
+
     const proceed =
       Platform.OS === "web"
         ? window.confirm("Reset badges? This clears earned badges for demo testing.")
         : await new Promise<boolean>((resolve) => {
-          Alert.alert("Reset badges?", "This clears earned badges for demo testing.", [
-            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-            { text: "Reset", style: "destructive", onPress: () => resolve(true) },
-          ]);
-        });
+            Alert.alert("Reset badges?", "This clears earned badges for demo testing.", [
+              { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+              { text: "Reset", style: "destructive", onPress: () => resolve(true) },
+            ]);
+          });
 
     if (!proceed) return;
 
@@ -96,7 +104,8 @@ export default function AchievementsScreen() {
       setBusy("reset");
       setStatus("Resetting badges…");
 
-      await resetDemoBadges({ ownerId: OWNER_ID });
+      // ✅ if your reset mutation becomes viewer-based, change to resetDemoBadges({})
+      await resetDemoBadges({});
 
       setStatus("♻️ Reset complete ✅");
     } catch (e: any) {
@@ -110,18 +119,17 @@ export default function AchievementsScreen() {
     }
   };
 
-
   return (
     <SafeAreaView style={styles.container}>
       <ThemedView style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <ThemedText type="title">Badges & Achievements</ThemedText>
+
           {status ? (
             <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.card }]}>
               <ThemedText>{status}</ThemedText>
             </View>
           ) : null}
-
 
           {!overview ? (
             <ThemedText style={{ marginTop: 8 }}>Loading…</ThemedText>
@@ -143,10 +151,34 @@ export default function AchievementsScreen() {
                 </View>
 
                 <View style={{ marginTop: 12, gap: 8 }}>
-                  <ActionButton text={busy === "eval" ? "Evaluating…" : "Evaluate"} disabled={!!busy} onPress={onEvaluate} />
-                  <ActionButton text={busy === "seed" ? "Seeding…" : "Seed Demo"} disabled={!!busy} onPress={onSeed} />
-                  <ActionButton text={busy === "reset" ? "Resetting…" : "Reset Badges"} disabled={!!busy} onPress={onReset} danger />
+                  <ActionButton
+                    text={busy === "eval" ? "Evaluating…" : "Evaluate"}
+                    disabled={!!busy}
+                    onPress={onEvaluate}
+                  />
+
+                  {ENABLE_DEMO && (
+                    <>
+                      <ActionButton
+                        text={busy === "seed" ? "Seeding…" : "Seed Demo"}
+                        disabled={!!busy}
+                        onPress={onSeed}
+                      />
+                      <ActionButton
+                        text={busy === "reset" ? "Resetting…" : "Reset Badges"}
+                        disabled={!!busy}
+                        onPress={onReset}
+                        danger
+                      />
+                    </>
+                  )}
                 </View>
+
+                {!ENABLE_DEMO ? (
+                  <ThemedText style={{ opacity: 0.7, marginTop: 6 }}>
+                    Demo tools are disabled. Set EXPO_PUBLIC_ENABLE_DEMO=true in .env.local to show them.
+                  </ThemedText>
+                ) : null}
               </View>
 
               {/* Earned badges */}
@@ -154,13 +186,17 @@ export default function AchievementsScreen() {
                 <ThemedText type="subtitle">Earned Badges</ThemedText>
 
                 {earnedBadges.length === 0 ? (
-                  <ThemedText style={{ marginTop: 8 }}>No badges earned yet. Seed demo or start using the app!</ThemedText>
+                  <ThemedText style={{ marginTop: 8 }}>
+                    No badges earned yet. Start using the app and press Evaluate!
+                  </ThemedText>
                 ) : (
                   <View style={{ marginTop: 10, gap: 10 }}>
                     {earnedBadges.map((b) => (
                       <View key={b._id} style={[styles.badgeRow, { borderColor: theme.border }]}>
                         <ThemedText style={styles.badgeTitle}>{b.badgeKey}</ThemedText>
-                        <ThemedText style={{ opacity: 0.7 }}>{new Date(b.earnedAt).toLocaleDateString()}</ThemedText>
+                        <ThemedText style={{ opacity: 0.7 }}>
+                          {new Date(b.earnedAt).toLocaleDateString()}
+                        </ThemedText>
                       </View>
                     ))}
                   </View>
@@ -238,7 +274,6 @@ function ActionButton({
     </Pressable>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

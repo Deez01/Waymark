@@ -5,8 +5,9 @@ import { v } from "convex/values";
 
 export default defineSchema({
   ...authTables,
+
   users: defineTable({
-    email: v.string(),
+    email: v.optional(v.string()),
     username: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -19,7 +20,7 @@ export default defineSchema({
 
   //Pins table
   pins: defineTable({
-    ownerId: v.string(),
+    ownerId: v.string(), // still string; we store viewer._id.toString()
     title: v.string(),
     description: v.optional(v.string()),
     lat: v.number(),
@@ -35,32 +36,29 @@ export default defineSchema({
     .index("by_category", ["category"])
     .index("by_ownerId", ["ownerId"]),
 
-  // Tags table - reusable labels for pins
   tags: defineTable({
     name: v.string(),
     color: v.optional(v.string()),
-    category: v.optional(v.string()), // e.g., "Holiday", "Activity", "Food", or null for user-created
-    isDefault: v.boolean(), // true for system tags, false for user-created
-    createdBy: v.optional(v.id("users")), // null for default tags, user ID for custom tags
+    category: v.optional(v.string()),
+    isDefault: v.boolean(),
+    createdBy: v.optional(v.id("users")),
   })
     .index("by_name", ["name"])
     .index("by_is_default", ["isDefault"])
     .index("by_category", ["category"])
     .index("by_creator", ["createdBy"]),
 
-  // PinTags table - many-to-many relationship between pins and tags
   pinTags: defineTable({
     pinId: v.id("pins"),
-    pinTitle: v.string(), // Denormalized: title of the pin
+    pinTitle: v.string(),
     tagId: v.id("tags"),
-    tagName: v.string(), // Denormalized: name of the tag
-    tagColor: v.optional(v.string()), // Denormalized: color of the tag
+    tagName: v.string(),
+    tagColor: v.optional(v.string()),
   })
     .index("by_pin", ["pinId"])
     .index("by_tag", ["tagId"])
     .index("by_pin_and_tag", ["pinId", "tagId"]),
 
-  // SharedPins table - pins shared with specific users
   sharedPins: defineTable({
     pinId: v.id("pins"),
     sharedBy: v.id("users"),
@@ -71,15 +69,10 @@ export default defineSchema({
     .index("by_shared_with", ["sharedWith"])
     .index("by_shared_by", ["sharedBy"]),
 
-  // Friendships table - user connections
   friendships: defineTable({
     userId1: v.id("users"),
     userId2: v.id("users"),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("rejected")
-    ),
+    status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("rejected")),
     requestedBy: v.id("users"),
     updatedAt: v.number(),
   })
@@ -87,7 +80,6 @@ export default defineSchema({
     .index("by_user2", ["userId2"])
     .index("by_status", ["status"]),
 
-  // Comments table - comments on pins
   comments: defineTable({
     pinId: v.id("pins"),
     userId: v.id("users"),
@@ -97,79 +89,63 @@ export default defineSchema({
     .index("by_pin", ["pinId"])
     .index("by_user", ["userId"]),
 
-  // Achievements table - gamification achievements
   achievements: defineTable({
     name: v.string(),
     description: v.string(),
     icon: v.optional(v.string()),
     points: v.number(),
-    criteria: v.string(), // JSON string or text description of unlock criteria
-  })
-    .index("by_name", ["name"]),
+    criteria: v.string(),
+  }).index("by_name", ["name"]),
 
-  // UserAchievements table - tracks which users have which achievements
   userAchievements: defineTable({
     userId: v.id("users"),
     achievementId: v.id("achievements"),
     unlockedAt: v.number(),
-    progress: v.optional(v.number()), // For achievements with progress tracking
+    progress: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_achievement", ["achievementId"])
     .index("by_user_and_achievement", ["userId", "achievementId"]),
 
-  // Reports table - user reports for content moderation
   reports: defineTable({
     reportedBy: v.id("users"),
-    reportType: v.union(
-      v.literal("pin"),
-      v.literal("comment"),
-      v.literal("user")
-    ),
-    reportedItemId: v.string(), // ID of pin, comment, or user
+    reportType: v.union(v.literal("pin"), v.literal("comment"), v.literal("user")),
+    reportedItemId: v.string(),
     reason: v.string(),
     description: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("reviewed"),
-      v.literal("resolved"),
-      v.literal("dismissed")
-    ),
+    status: v.union(v.literal("pending"), v.literal("reviewed"), v.literal("resolved"), v.literal("dismissed")),
     resolvedAt: v.optional(v.number()),
     resolvedBy: v.optional(v.id("users")),
   })
     .index("by_reporter", ["reportedBy"])
     .index("by_status", ["status"])
     .index("by_type", ["reportType"]),
-    //.index("by_ownerId", ["ownerId"])
-    //.index("by_ownerId_badgeKey", ["ownerId", "badgeKey"]),
-  
+
   friendRequests: defineTable({
     senderId: v.id("users"),
     receiverId: v.id("users"),
-    status: v.string(), 
+    status: v.string(),
     createdAt: v.optional(v.number()),
   })
     .index("by_senderId", ["senderId"])
     .index("by_receiverId", ["receiverId"])
     .index("by_status", ["status"]),
+
   pinShares: defineTable({
     pinId: v.id("pins"),
     fromOwnerId: v.id("users"),
     toOwnerId: v.id("users"),
     createdAt: v.number(),
-})
-  .index("by_fromOwnerId", ["fromOwnerId"])
-  .index("by_toOwnerId", ["toOwnerId"])
-  // optional but useful:
-  .index("by_pinId", ["pinId"]),
+  })
+    .index("by_fromOwnerId", ["fromOwnerId"])
+    .index("by_toOwnerId", ["toOwnerId"])
+    .index("by_pinId", ["pinId"]),
 
   userBadges: defineTable({
     userId: v.id("users"),
     badgeKey: v.string(),
     earnedAt: v.number(),
-})
-  .index("by_userId", ["userId"])
-  .index("by_userId_badgeKey", ["userId", "badgeKey"]),
-
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_badgeKey", ["userId", "badgeKey"]),
 });

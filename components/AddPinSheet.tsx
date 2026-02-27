@@ -1,10 +1,10 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Modal, Alert, Dimensions, Platform, BackHandler } from 'react-native';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { api } from '@/convex/_generated/api';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
 import * as Location from 'expo-location';
-import { api } from '@/convex/_generated/api';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -204,13 +204,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     setIsSubmitting(true);
     try {
       const newPinId = await createPin({
-        ownerId: "temp_user_id",
         title,
         description,
         address,
         lat,
         lng,
-        category: 'general',
+        category: "general",
       });
 
       if (selectedTags.length > 0) {

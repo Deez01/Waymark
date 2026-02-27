@@ -1,15 +1,58 @@
-// Bare-bones pins API for testing gamification + basic app flows.
-// Extend / tighten types as the project grows.
-
+// convex/pins.js
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-export const getPinsByOwner = query({
-  args: { ownerId: v.string() },
+function assertAuthed(userId) {
+  if (!userId) throw new Error("Not authenticated");
+  return userId;
+}
+
+export const createPin = mutation({
+  args: {
+    title: v.string(),
+    description: v.optional(v.string()),
+    lat: v.number(),
+    lng: v.number(),
+    category: v.optional(v.string()),
+    address: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    thumbnail: v.optional(v.string()),
+    pictures: v.optional(v.array(v.string())),
+    tags: v.optional(v.array(v.string())),
+  },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerId = userId.toString(); // pins.ownerId is a string in your schema
+
+    const pinId = await ctx.db.insert("pins", {
+      ownerId,
+      title: args.title,
+      description: args.description,
+      lat: args.lat,
+      lng: args.lng,
+      category: args.category ?? "general",
+      createdAt: Date.now(),
+      address: args.address,
+      caption: args.caption,
+      thumbnail: args.thumbnail,
+      pictures: args.pictures,
+      tags: args.tags,
+    });
+
+    return pinId;
+  },
+});
+
+export const getPinsByOwner = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerIdStr = userId.toString();
+
     return await ctx.db
       .query("pins")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerIdStr))
       .collect();
   },
 });
@@ -27,88 +70,16 @@ export const getAllPins = query({
   },
 });
 
-export const getSharedPins = query({
-  args: {
-    userId: v.id("users"),
-  },
-  handler: async (ctx, args) => {
-    const userIdStr = args.userId.toString();
-
-    // Get accepted friendships
-    const friendships = await ctx.db
-      .query("friendships")
-      .withIndex("by_status", (q) => q.eq("status", "accepted"))
-      .collect();
-
-    // Extract friend user IDs
-    const friendIds = friendships
-      .filter(
-        (f) =>
-          f.userId1.equals(args.userId) ||
-          f.userId2.equals(args.userId)
-      )
-      .map((f) =>
-        f.userId1.equals(args.userId) ? f.userId2 : f.userId1
-      )
-      .map((id) => id.toString());
-
-    // Allowed pin owners = self + friends
-    const allowedOwnerIds = new Set([
-      userIdStr,
-      ...friendIds,
-    ]);
-
-    // Fetch and filter pins
-    const pins = await ctx.db.query("pins").collect();
-
-    return pins.filter((pin) =>
-      allowedOwnerIds.has(pin.ownerId)
-    );
-  },
-});
-
-export const createPin = mutation({
-  args: {
-    ownerId: v.string(),
-    title: v.string(),
-    description: v.optional(v.string()),
-    lat: v.number(),
-    lng: v.number(),
-    category: v.optional(v.string()),
-    address: v.optional(v.string()),
-    caption: v.optional(v.string()),
-    thumbnail: v.optional(v.string()),
-    pictures: v.optional(v.array(v.string())),
-    tags: v.optional(v.array(v.string())),
-  },
-  handler: async (ctx, args) => {
-    const pinId = await ctx.db.insert("pins", {
-      ownerId: args.ownerId,
-      title: args.title,
-      description: args.description,
-      lat: args.lat,
-      lng: args.lng,
-      category: args.category ?? "general",
-      createdAt: Date.now(),
-      address: args.address,
-      caption: args.caption,
-      thumbnail: args.thumbnail,
-      pictures: args.pictures,
-      tags: args.tags,
-    });
-    return pinId;
-  },
-});
-
 export const deletePin = mutation({
-  args: {
-    ownerId: v.string(),
-    pinId: v.id("pins"),
-  },
+  args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerIdStr = userId.toString();
+
     const pin = await ctx.db.get(args.pinId);
     if (!pin) throw new Error("Pin not found");
-    if (pin.ownerId !== args.ownerId) throw new Error("Not authorized");
+    if (pin.ownerId !== ownerIdStr) throw new Error("Not authorized");
+
     await ctx.db.delete(args.pinId);
     return true;
   },
@@ -120,14 +91,9 @@ export const updateCaption = mutation({
     caption: v.string(),
   },
   handler: async (ctx, args) => {
-    // Vaildtion 
-    if (args.caption.length > 400) {
-      throw new Error("Caption too long (max 400 characters)")
-    }
-
-    await ctx.db.patch(args.pinId, {
-      caption: args.caption,
-    });
+    assertAuthed(await getAuthUserId(ctx));
+    if (args.caption.length > 400) throw new Error("Caption too long (max 400 characters)");
+    await ctx.db.patch(args.pinId, { caption: args.caption });
   },
 });
 
@@ -142,17 +108,19 @@ export const updatePin = mutation({
     address: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertAuthed(await getAuthUserId(ctx));
+
     if (args.caption !== undefined && args.caption.length > 400) {
       throw new Error("Caption too long (max 400 characters)");
     }
-    const updates = {}
+
+    const updates = {};
     if (args.title !== undefined) updates.title = args.title;
     if (args.description !== undefined) updates.description = args.description;
     if (args.caption !== undefined) updates.caption = args.caption;
-
     if (args.lat !== undefined) updates.lat = args.lat;
     if (args.lng !== undefined) updates.lng = args.lng;
-    if (args.address !== undefined) updates.address = arg.address;
+    if (args.address !== undefined) updates.address = args.address;
 
     await ctx.db.patch(args.pinId, updates);
   },
