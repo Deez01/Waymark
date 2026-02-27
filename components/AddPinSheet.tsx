@@ -55,7 +55,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   }, {}) : {};
 
   const programmaticSnapRef = useRef(false);
-  const programmaticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapTo = (index: number) => {
     programmaticSnapRef.current = true;
