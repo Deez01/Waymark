@@ -200,7 +200,11 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   };
 
   const handleCreate = async () => {
-    if (!title || lat === null || lng === null) return;
+    if (!title.trim()) {
+      Alert.alert("Title required", "Add a title to save this pin.");
+      return;
+    }
+    if (lat === null || lng === null) return;
     setIsSubmitting(true);
     try {
       const newPinId = await createPin({
@@ -265,7 +269,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
           <View style={styles.titleRow}>
             <TextInput
               style={[styles.titleInput, { color: theme.text }]}
-              placeholder="Location Name"
+              placeholder="Title (required)"
               placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
               value={title}
               onChangeText={setTitle}
