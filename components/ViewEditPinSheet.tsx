@@ -326,47 +326,197 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 }
 
 const styles = StyleSheet.create({
-  sheetBackground: { borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  handleIndicator: { width: 40 },
-  scrollWrapper: { flex: 1 },
-  contentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
-  imageScroll: { flexGrow: 0, marginBottom: 20 },
-  addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  formContainer: { flex: 1 },
-
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  titleInput: { fontSize: 24, fontWeight: '700', flex: 1, marginRight: 10 },
-  dateText: { fontSize: 14 },
-
-  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  metaButton: { flexDirection: 'row', alignItems: 'center' },
-  metaText: { marginLeft: 4, fontSize: 14 },
-  addressContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-start', marginLeft: 15 },
-  addressText: { marginLeft: 4, fontSize: 14, flexShrink: 1 },
-
-  selectedTagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 },
-  selectedTagPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  selectedTagText: { color: '#fff', fontSize: 12, fontWeight: '500' },
-
-  notesAndSaveRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 },
-  notesAndSaveRowExpanded: { flex: 1, alignItems: 'flex-start' },
-  notesInput: { flex: 1, fontSize: 14, paddingVertical: 8, marginRight: 10, maxHeight: 60 },
-  notesInputExpanded: { flex: 1, maxHeight: '100%', textAlignVertical: 'top' },
-  saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20 },
-  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  sheetBackground: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24
+  },
+  handleIndicator: {
+    width: 40
+  },
+  scrollWrapper: {
+    flex: 1
+  },
+  contentContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20
+  },
+  imageScroll: {
+    flexGrow: 0,
+    marginBottom: 20
+  },
+  addImageButton: {
+    width: 100,
+    height: 120,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10
+  },
+  formContainer: {
+    flex: 1
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  titleInput: {
+    fontSize: 24,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 10
+  },
+  dateText: {
+    fontSize: 14
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12
+  },
+  metaButton: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  metaText: {
+    marginLeft: 4,
+    fontSize: 14
+  },
+  addressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'flex-end',
+    marginLeft: 15
+  },
+  addressText: {
+    marginLeft: 4,
+    fontSize: 14,
+    textAlign: 'right',
+    flexShrink: 1
+  },
+  selectedTagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 15
+  },
+  selectedTagPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  selectedTagText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500'
+  },
+  notesAndSaveRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    marginBottom: 20
+  },
+  notesAndSaveRowExpanded: {
+    flex: 1,
+    alignItems: 'flex-start'
+  },
+  notesInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 8,
+    marginRight: 10,
+    maxHeight: 60
+  },
+  notesInputExpanded: {
+    flex: 1,
+    maxHeight: '100%',
+    textAlignVertical: 'top'
+  },
+  saveButton: {
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600'
+  },
 
   // Modal styles
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "85%", minHeight: "50%" },
-  modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  modalTitle: { fontSize: 18, fontWeight: "600" },
-  modalCloseText: { fontSize: 24 },
-  categoryTitle: { fontSize: 14, fontWeight: "600", marginBottom: 10 },
-  tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
-  tagOptionText: { fontSize: 13, fontWeight: "500" },
-  createTagSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, paddingBottom: 40 },
-  newTagInput: { borderWidth: 1, padding: 10, borderRadius: 6, marginBottom: 12 },
-  colorCircle: { width: 40, height: 40, borderRadius: 20 },
-  createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 }
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: 'flex-end'
+  },
+  modalContent: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: "85%",
+    minHeight: "50%"
+  },
+  modalHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600"
+  },
+  modalCloseText: {
+    fontSize: 24
+  },
+  categoryTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 10
+  },
+  tagOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16
+  },
+  tagOptionText: {
+    fontSize: 13,
+    fontWeight: "500"
+  },
+  createTagSection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    paddingBottom: 40
+  },
+  newTagInput: {
+    borderWidth: 1,
+    padding: 10,
+    borderRadius: 6,
+    marginBottom: 12
+  },
+  colorCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20
+  },
+  createTagButton: {
+    backgroundColor: '#000',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  createTagButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14
+  }
 });
