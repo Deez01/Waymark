@@ -137,6 +137,9 @@ export const updatePin = mutation({
     title: v.optional(v.string()),
     description: v.optional(v.string()),
     caption: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    address: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.caption !== undefined && args.caption.length > 400) {
@@ -146,6 +149,10 @@ export const updatePin = mutation({
     if (args.title !== undefined) updates.title = args.title;
     if (args.description !== undefined) updates.description = args.description;
     if (args.caption !== undefined) updates.caption = args.caption;
+
+    if (args.lat !== undefined) updates.lat = args.lat;
+    if (args.lng !== undefined) updates.lng = args.lng;
+    if (args.address !== undefined) updates.address = arg.address;
 
     await ctx.db.patch(args.pinId, updates);
   },
