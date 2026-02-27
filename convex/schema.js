@@ -153,4 +153,23 @@ export default defineSchema({
     .index("by_senderId", ["senderId"])
     .index("by_receiverId", ["receiverId"])
     .index("by_status", ["status"]),
+  pinShares: defineTable({
+    pinId: v.id("pins"),
+    fromOwnerId: v.id("users"),
+    toOwnerId: v.id("users"),
+    createdAt: v.number(),
+})
+  .index("by_fromOwnerId", ["fromOwnerId"])
+  .index("by_toOwnerId", ["toOwnerId"])
+  // optional but useful:
+  .index("by_pinId", ["pinId"]),
+
+  userBadges: defineTable({
+    userId: v.id("users"),
+    badgeKey: v.string(),
+    earnedAt: v.number(),
+})
+  .index("by_userId", ["userId"])
+  .index("by_userId_badgeKey", ["userId", "badgeKey"]),
+
 });

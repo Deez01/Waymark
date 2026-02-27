@@ -184,10 +184,13 @@ export const getOverview = query({
   args: { ownerId: v.string() },
   handler: async (ctx, args) => {
     const stats = await getStats(ctx, args.ownerId);
+
+    // ✅ UPDATED: userBadges now uses userId + by_userId index
     const earned = await ctx.db
       .query("userBadges")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_userId", (q) => q.eq("userId", args.ownerId))
       .collect();
+
     const earnedKeys = new Set(earned.map((b) => b.badgeKey));
 
     const achievements = ACHIEVEMENTS.map((a) => {
@@ -212,18 +215,21 @@ export const evaluateAndAward = mutation({
   handler: async (ctx, args) => {
     const stats = await getStats(ctx, args.ownerId);
 
+    // ✅ UPDATED: userBadges now uses userId + by_userId index
     const existing = await ctx.db
       .query("userBadges")
-      .withIndex("by_ownerId", (q) => q.eq("ownerId", args.ownerId))
+      .withIndex("by_userId", (q) => q.eq("userId", args.ownerId))
       .collect();
+
     const existingKeys = new Set(existing.map((b) => b.badgeKey));
 
     const newlyEarned = [];
     for (const a of ACHIEVEMENTS) {
       const { complete } = computeProgress({ ...stats, achievement: a });
       if (complete && !existingKeys.has(a.key)) {
+        // ✅ UPDATED: insert uses userId instead of ownerId
         await ctx.db.insert("userBadges", {
-          ownerId: args.ownerId,
+          userId: args.ownerId,
           badgeKey: a.key,
           earnedAt: Date.now(),
         });
