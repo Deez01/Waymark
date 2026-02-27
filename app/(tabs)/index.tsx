@@ -1,4 +1,4 @@
-// app/(tabs)/map.tsx
+// app/(tabs)/index.tsx
 import { useState, useEffect } from "react";
 import { View, TextInput, StyleSheet, TouchableOpacity, Text, Keyboard } from "react-native";
 import MapView, { Marker, LongPressEvent } from "react-native-maps";
@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from '@expo/vector-icons';
 
 import AddPinSheet from "@/components/AddPinSheet";
+import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
@@ -27,6 +28,10 @@ export default function MapScreen() {
   const [selectedTitle, setSelectedTitle] = useState<string | undefined>();
   const [selectedAddress, setSelectedAddress] = useState<string | undefined>();
 
+  const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
+  const [selectedPin, setSelectedPin] = useState<any>(null);
+  const [viewPinTrigger, setViewPinTrigger] = useState(0);
+
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
@@ -37,7 +42,11 @@ export default function MapScreen() {
       setSelectedLng(undefined);
       setSelectedTitle(undefined);
       setSelectedAddress(undefined);
+
       setIsSheetOpen(true);
+      setIsViewSheetOpen(false);
+      setSelectedPin(null);
+
       router.setParams({ openSheet: '' });
     }
   }, [params.openSheet]);
@@ -48,7 +57,10 @@ export default function MapScreen() {
     setSelectedLng(longitude);
     setSelectedTitle(undefined);
     setSelectedAddress(undefined);
+
     setIsSheetOpen(true);
+    setIsViewSheetOpen(false);
+    setSelectedPin(null);
   };
 
   const handleSearchChange = async (text: string) => {
@@ -58,7 +70,7 @@ export default function MapScreen() {
       return;
     }
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en`, {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en&lat=33.783&lon=-118.114`, {
         headers: { 'User-Agent': 'WaymarkApp/1.0' }
       });
       if (!response.ok) return;
@@ -79,7 +91,10 @@ export default function MapScreen() {
     setSearchQuery('');
     setPredictions([]);
     Keyboard.dismiss();
+
     setIsSheetOpen(true);
+    setIsViewSheetOpen(false);
+    setSelectedPin(null);
   };
 
   return (
@@ -97,7 +112,7 @@ export default function MapScreen() {
         onLongPress={handleLongPress}
         onPress={() => Keyboard.dismiss()}
         onPanDrag={() => {
-          if (isSheetOpen) {
+          if (isSheetOpen || isViewSheetOpen) {
             setMinimizeTrigger(prev => prev + 1);
           }
         }}
@@ -107,9 +122,15 @@ export default function MapScreen() {
             key={pin._id}
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             title={pin.title}
-            description={pin.caption}
             // Pins set to Adwaita Red for better visibility
             pinColor={adwaitaRed}
+            onPress={(e) => {
+              e.stopPropagation(); // Prevent the map's onPress from firing
+              setSelectedPin(pin);
+              setIsViewSheetOpen(true);
+              setViewPinTrigger(prev => prev + 1);
+              setIsSheetOpen(false);
+            }}
             onCalloutPress={() => {
               router.push({
                 pathname: "/edit-caption",
@@ -171,6 +192,17 @@ export default function MapScreen() {
         initialTitle={selectedTitle}
         initialAddress={selectedAddress}
         minimizeTrigger={minimizeTrigger}
+      />
+
+      <ViewEditPinSheet
+        isOpen={isViewSheetOpen}
+        onClose={() => {
+          setIsViewSheetOpen(false);
+          setSelectedPin(null);
+        }}
+        pin={selectedPin}
+        minimizeTrigger={minimizeTrigger}
+        openTrigger={viewPinTrigger}
       />
     </View>
   );

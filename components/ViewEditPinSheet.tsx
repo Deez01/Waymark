@@ -1,52 +1,48 @@
+// components/ViewEditPinSheet.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Modal, Alert, Dimensions, Platform, BackHandler } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
-import * as Location from 'expo-location';
 import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-interface AddPinSheetProps {
+interface ViewEditPinSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  initialLat?: number;
-  initialLng?: number;
-  initialTitle?: string;
-  initialAddress?: string;
+  pin: any | null;
   minimizeTrigger?: number;
+  openTrigger?: number;
 }
 
-export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress, minimizeTrigger }: AddPinSheetProps) {
+export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
-
-  // Theme switch logic
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
   const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
 
-  const createPin = useMutation(api.pins.createPin);
+  // --- Convex Queries & Mutations ---
+  const updatePin = useMutation(api.pins.updatePin);
   const allTags = useQuery(api.pinTags.getAllTags);
+  const pinTags = useQuery(api.pinTags.getTagsForPin, pin ? { pinId: pin._id } : "skip");
   const createTag = useMutation(api.pinTags.createTag);
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
+  const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
 
+  // --- State ---
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [address, setAddress] = useState('');
-  const [lat, setLat] = useState<number | null>(null);
-  const [lng, setLng] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [showTagModal, setShowTagModal] = useState(false);
-  const [selectedTags, setSelectedTags] = useState<any[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
 
+  // Organize tags by category for the modal
   const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
     const category = tag.category || "Other";
     if (!acc[category]) acc[category] = [];
@@ -54,6 +50,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     return acc;
   }, {}) : {};
 
+  // --- Smooth Snapping Logic ---
   const programmaticSnapRef = useRef(false);
   const programmaticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -82,29 +79,33 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       }
       return false;
     };
-
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
   }, [sheetIndex]);
+
+  useEffect(() => {
+    if (isOpen && pin) {
+      setTitle(pin.title || '');
+      setDescription(pin.caption || pin.description || '');
+      snapTo(1);
+    } else {
+      bottomSheetRef.current?.close();
+      Keyboard.dismiss();
+    }
+  }, [isOpen, pin, openTrigger]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
       if (!isOpen) return;
 
       let kbHeight = e.endCoordinates.height;
-
       if (Platform.OS === 'android' && kbHeight < 100) {
         const screenHeight = Dimensions.get('screen').height;
         const windowHeight = Dimensions.get('window').height;
         kbHeight = screenHeight - windowHeight;
       }
-
-      const perfectHeight = kbHeight + 320;
-      setDynamicSnap(perfectHeight);
-
-      setTimeout(() => {
-        snapTo(2);
-      }, 10);
+      setDynamicSnap(kbHeight + 320);
+      setTimeout(() => snapTo(2), 10);
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
@@ -118,70 +119,19 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isOpen) {
-      snapTo(1);
-
-      if (initialTitle) setTitle(initialTitle);
-      if (initialAddress) setAddress(initialAddress);
-
-      if (initialLat && initialLng) {
-        setLat(initialLat);
-        setLng(initialLng);
-        if (!initialAddress) {
-          fetchAddress(initialLat, initialLng);
-        }
-      } else {
-        handleGetLocation();
-      }
-    } else {
-      bottomSheetRef.current?.close();
-      Keyboard.dismiss();
-      setTitle('');
-      setDescription('');
-      setAddress('');
-      setSelectedTags([]);
-    }
-  }, [isOpen, initialLat, initialLng, initialTitle, initialAddress]);
-
-  const fetchAddress = async (latitude: number, longitude: number) => {
-    const fallbackCoords = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+  // --- Tag Logic ---
+  const toggleTagSelection = async (tag: any) => {
+    if (!pin) return;
+    const isSelected = pinTags?.some((t: any) => t._id === tag._id);
     try {
-      const result = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (result.length > 0) {
-        const item = result[0];
-        const formattedAddress = `${item.streetNumber || ''} ${item.street || ''}, ${item.city || ''}`.trim();
-        const cleanAddress = formattedAddress.replace(/^, /, '');
-        setAddress(cleanAddress.length > 0 ? cleanAddress : fallbackCoords);
+      if (isSelected) {
+        await removeTagFromPin({ pinId: pin._id, tagId: tag._id });
       } else {
-        setAddress(fallbackCoords);
+        await addTagToPin({ pinId: pin._id, tagId: tag._id });
       }
-    } catch (e) {
-      setAddress(fallbackCoords);
+    } catch (err: any) {
+      Alert.alert("Error", err?.message ?? "Failed to toggle tag");
     }
-  };
-
-  const handleGetLocation = async () => {
-    try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      let location = await Location.getCurrentPositionAsync({});
-      setLat(location.coords.latitude);
-      setLng(location.coords.longitude);
-      await fetchAddress(location.coords.latitude, location.coords.longitude);
-    } catch (error) {
-      console.log('Could not fetch location', error);
-    }
-  };
-
-  const toggleTagSelection = (tag: any) => {
-    setSelectedTags((prev) => {
-      if (prev.some((t) => t._id === tag._id)) {
-        return prev.filter((t) => t._id !== tag._id);
-      } else {
-        return [...prev, tag];
-      }
-    });
   };
 
   const handleCreateTag = async () => {
@@ -191,7 +141,9 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
     try {
       const newTagId = await createTag({ name: newTagName, color: selectedColor });
-      setSelectedTags((prev) => [...prev, { _id: newTagId, name: newTagName, color: selectedColor }]);
+      if (pin) {
+        await addTagToPin({ pinId: pin._id, tagId: newTagId });
+      }
       setNewTagName("");
       setSelectedColor("#3b82f6");
     } catch (err: any) {
@@ -199,34 +151,30 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
-  const handleCreate = async () => {
-    if (!title || lat === null || lng === null) return;
+  const handleUpdate = async () => {
+    if (!pin) return;
     setIsSubmitting(true);
     try {
-      const newPinId = await createPin({
-        ownerId: "temp_user_id",
+      await updatePin({
+        pinId: pin._id,
         title,
         description,
-        address,
-        lat,
-        lng,
-        category: 'general',
+        caption: description
       });
-
-      if (selectedTags.length > 0) {
-        await Promise.all(
-          selectedTags.map(tag => addTagToPin({ pinId: newPinId, tagId: tag._id }))
-        );
-      }
       onClose();
     } catch (e: any) {
-      console.error('Failed to create pin: ', e.message);
+      console.error('Failed to update pin: ', e.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const currentDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+  if (!pin) return null;
+
+  // Format the date the pin was created (or fallback to today)
+  const displayDate = pin.createdAt
+    ? new Date(pin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
+    : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 
   return (
     <BottomSheet
@@ -235,7 +183,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      onChange={(index) => setSheetIndex(index)}
+      onChange={setSheetIndex}
       onAnimate={(fromIndex, toIndex) => {
         if (programmaticSnapRef.current) return;
         if (toIndex - fromIndex > 1) {
@@ -248,18 +196,11 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       backgroundStyle={[styles.sheetBackground, { backgroundColor: theme.background }]}
       handleIndicatorStyle={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]}
     >
-      <BottomSheetScrollView
-        style={styles.scrollWrapper}
-        contentContainerStyle={styles.contentContainer}
-        keyboardShouldPersistTaps="handled"
-      >
+      <BottomSheetScrollView style={styles.scrollWrapper} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
           <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
             <IconSymbol name="plus" size={32} color={theme.text} />
           </TouchableOpacity>
-          <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
-            <IconSymbol name="photo" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
-          </View>
         </ScrollView>
 
         <View style={styles.formContainer}>
@@ -272,7 +213,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
               onChangeText={setTitle}
               onFocus={() => snapTo(2)}
             />
-            <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{currentDate}</Text>
+            <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
           </View>
 
           <View style={styles.metaRow}>
@@ -283,13 +224,16 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
             <View style={styles.addressContainer}>
               <IconSymbol name="mappin.and.ellipse" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text>
+              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>
+                {pin.address || "No address provided"}
+              </Text>
             </View>
           </View>
 
-          {selectedTags.length > 0 && (
+          {/* Render Selected Tags */}
+          {pinTags && pinTags.length > 0 && (
             <View style={styles.selectedTagsContainer}>
-              {selectedTags.map(tag => (
+              {pinTags.map((tag: any) => (
                 <View key={tag._id} style={[styles.selectedTagPill, { backgroundColor: tag.color || '#3b82f6' }]}>
                   <Text style={styles.selectedTagText}>{tag.name}</Text>
                 </View>
@@ -309,25 +253,26 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
             />
 
             <TouchableOpacity
-              style={[styles.saveButton, (!title || lat === null) && styles.saveButtonDisabled]}
-              onPress={handleCreate}
-              disabled={isSubmitting || !title || lat === null}
+              style={styles.saveButton}
+              onPress={handleUpdate}
+              disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.saveButtonText}>Save Pin</Text>
+                <Text style={styles.saveButtonText}>Update</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </BottomSheetScrollView>
 
+      {/* Tags Modal */}
       <Modal visible={showTagModal} animationType="slide" transparent={true} onRequestClose={() => setShowTagModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Add Tags</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text>
               <TouchableOpacity onPress={() => setShowTagModal(false)}>
                 <Text style={[styles.modalCloseText, { color: theme.text }]}>✕</Text>
               </TouchableOpacity>
@@ -338,7 +283,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
                   <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                     {tags && tags.map((tag: any) => {
-                      const isSelected = selectedTags.some(t => t._id === tag._id);
+                      const isSelected = pinTags?.some((t: any) => t._id === tag._id);
                       return (
                         <TouchableOpacity
                           key={tag._id}
@@ -387,7 +332,6 @@ const styles = StyleSheet.create({
   contentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
   imageScroll: { flexGrow: 0, marginBottom: 20 },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  placeholderImageBox: { width: 100, height: 120, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   formContainer: { flex: 1 },
 
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -397,8 +341,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   metaButton: { flexDirection: 'row', alignItems: 'center' },
   metaText: { marginLeft: 4, fontSize: 14 },
-  addressContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginLeft: 15 },
-  addressText: { marginLeft: 4, fontSize: 14, textAlign: 'right', flexShrink: 1 },
+  addressContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-start', marginLeft: 15 },
+  addressText: { marginLeft: 4, fontSize: 14, flexShrink: 1 },
 
   selectedTagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 },
   selectedTagPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
@@ -408,11 +352,10 @@ const styles = StyleSheet.create({
   notesAndSaveRowExpanded: { flex: 1, alignItems: 'flex-start' },
   notesInput: { flex: 1, fontSize: 14, paddingVertical: 8, marginRight: 10, maxHeight: 60 },
   notesInputExpanded: { flex: 1, maxHeight: '100%', textAlignVertical: 'top' },
-
   saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20 },
-  saveButtonDisabled: { backgroundColor: '#ccc' },
   saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
+  // Modal styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "85%", minHeight: "50%" },
   modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

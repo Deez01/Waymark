@@ -48,9 +48,9 @@ export default function TabLayout() {
 
       {/* 1. Map Tab */}
       <Tabs.Screen
-        name="map"
+        name="index"
         options={{
-          title: 'Map',
+          title: 'map',
           tabBarIcon: ({ color }) => <MaterialIcons size={28} name="map" color={color} />,
         }}
       />
@@ -79,7 +79,11 @@ export default function TabLayout() {
             <TouchableOpacity
               {...props}
               onPress={() => {
-                router.push('/(tabs)/map?openSheet=true');
+                // Routes the Create button to the AddPinSheet
+                router.push({
+                  pathname: '/(tabs)',
+                  params: { openSheet: 'true' }
+                } as any);
               }}
             />
           ),

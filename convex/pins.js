@@ -39,29 +39,29 @@ export const getSharedPins = query({
       .query("friendships")
       .withIndex("by_status", (q) => q.eq("status", "accepted"))
       .collect();
-    
+
     // Extract friend user IDs
     const friendIds = friendships
       .filter(
-        (f) => 
-          f.userId1.equals(args.userId) || 
+        (f) =>
+          f.userId1.equals(args.userId) ||
           f.userId2.equals(args.userId)
       )
-      .map((f) => 
-      f.userId1.equals(args.userId) ? f.userId2 : f.userId1
+      .map((f) =>
+        f.userId1.equals(args.userId) ? f.userId2 : f.userId1
       )
       .map((id) => id.toString());
 
     // Allowed pin owners = self + friends
     const allowedOwnerIds = new Set([
-      userIdStr, 
+      userIdStr,
       ...friendIds,
     ]);
 
     // Fetch and filter pins
     const pins = await ctx.db.query("pins").collect();
 
-    return pins.filter((pin) => 
+    return pins.filter((pin) =>
       allowedOwnerIds.has(pin.ownerId)
     );
   },
@@ -94,7 +94,7 @@ export const createPin = mutation({
       caption: args.caption,
       thumbnail: args.thumbnail,
       pictures: args.pictures,
-      tags: args.tags,    
+      tags: args.tags,
     });
     return pinId;
   },
@@ -116,9 +116,9 @@ export const deletePin = mutation({
 
 export const updateCaption = mutation({
   args: {
-    pinId: v.id("pins"), 
+    pinId: v.id("pins"),
     caption: v.string(),
-  }, 
+  },
   handler: async (ctx, args) => {
     // Vaildtion 
     if (args.caption.length > 400) {
@@ -128,5 +128,32 @@ export const updateCaption = mutation({
     await ctx.db.patch(args.pinId, {
       caption: args.caption,
     });
+  },
+});
+
+export const updatePin = mutation({
+  args: {
+    pinId: v.id("pins"),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    caption: v.optional(v.string()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    address: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    if (args.caption !== undefined && args.caption.length > 400) {
+      throw new Error("Caption too long (max 400 characters)");
+    }
+    const updates = {}
+    if (args.title !== undefined) updates.title = args.title;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.caption !== undefined) updates.caption = args.caption;
+
+    if (args.lat !== undefined) updates.lat = args.lat;
+    if (args.lng !== undefined) updates.lng = args.lng;
+    if (args.address !== undefined) updates.address = arg.address;
+
+    await ctx.db.patch(args.pinId, updates);
   },
 });
