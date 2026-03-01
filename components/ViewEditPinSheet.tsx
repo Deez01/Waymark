@@ -5,6 +5,7 @@ import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Image } from 'expo-image';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -30,6 +31,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   const updatePin = useMutation(api.pins.updatePin);
   const allTags = useQuery(api.pinTags.getAllTags);
   const pinTags = useQuery(api.pinTags.getTagsForPin, pin ? { pinId: pin._id } : "skip");
+  const pinPictures = useQuery(api.pins.getPinPictures, pin ? { pinId: pin._id } : "skip");
   const createTag = useMutation(api.pinTags.createTag);
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
   const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
@@ -52,7 +54,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   // --- Smooth Snapping Logic ---
   const programmaticSnapRef = useRef(false);
-  const programmaticTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapTo = (index: number) => {
     programmaticSnapRef.current = true;
@@ -201,6 +203,17 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
           <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
             <IconSymbol name="plus" size={32} color={theme.text} />
           </TouchableOpacity>
+          {pinPictures && pinPictures.length > 0 ? (
+            pinPictures.map((picture: { storageId: string; url: string | null }) => (
+              <View key={picture.storageId} style={styles.imagePreviewContainer}>
+                {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
+              </View>
+            ))
+          ) : (
+            <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
+              <IconSymbol name="photo" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
+            </View>
+          )}
         </ScrollView>
 
         <View style={styles.formContainer}>
@@ -332,6 +345,9 @@ const styles = StyleSheet.create({
   contentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
   imageScroll: { flexGrow: 0, marginBottom: 20 },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  placeholderImageBox: { width: 100, height: 120, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10 },
+  previewImage: { width: '100%', height: '100%' },
   formContainer: { flex: 1 },
 
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
