@@ -152,7 +152,7 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      <View style={[styles.searchOverlay, { top: insets.top + 12 }]}>
+      <View style={[styles.searchOverlay, { top: insets.top + 10 }]}>
         <View style={[
           styles.searchContainer,
           {
