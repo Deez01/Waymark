@@ -1,12 +1,26 @@
-// convex/pins.js
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { api } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 
 function assertAuthed(userId) {
   if (!userId) throw new Error("Not authenticated");
   return userId;
 }
+
+export const generateUploadUrl = mutation({
+  handler: async (ctx) => {
+    assertAuthed(await getAuthUserId(ctx));
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const getImageUrl = query({
+  args: { storageId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});
 
 export const createPin = mutation({
   args: {
@@ -23,7 +37,10 @@ export const createPin = mutation({
   },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
-    const ownerId = userId.toString(); // pins.ownerId is a string in your schema
+    const ownerId = userId.toString();
+    if (args.pictures && args.pictures.length > 10) {
+      throw new Error("A pin can have up to 10 photos");
+    }
 
     const pinId = await ctx.db.insert("pins", {
       ownerId,
@@ -39,6 +56,8 @@ export const createPin = mutation({
       pictures: args.pictures,
       tags: args.tags,
     });
+
+    await ctx.runMutation(api.achievements.evaluateAndAward, {});
 
     return pinId;
   },
@@ -61,6 +80,25 @@ export const getPinById = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.pinId);
+  },
+});
+
+export const getPinPictures = query({
+  args: { pinId: v.id("pins") },
+  handler: async (ctx, args) => {
+    const pin = await ctx.db.get(args.pinId);
+    if (!pin?.pictures || pin.pictures.length === 0) {
+      return [];
+    }
+
+    const withUrls = await Promise.all(
+      pin.pictures.map(async (storageId) => ({
+        storageId,
+        url: await ctx.storage.getUrl(storageId),
+      }))
+    );
+
+    return withUrls.filter((item) => item.url !== null);
   },
 });
 

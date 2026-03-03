@@ -1,6 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -9,24 +9,19 @@ import { ThemedView } from "@/components/themed-view";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
-// Option A: demo tools only enabled if explicitly turned on in .env.local
-// EXPO_PUBLIC_ENABLE_DEMO=false  (default)
-// EXPO_PUBLIC_ENABLE_DEMO=true   (to show demo buttons)
 const ENABLE_DEMO = process.env.EXPO_PUBLIC_ENABLE_DEMO === "true";
 
 export default function AchievementsScreen() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? "light"];
 
-  // ✅ Backend now derives the current user from auth; no args needed.
   const overview = useQuery(api.achievements.getOverview, {});
   const evaluateAndAward = useMutation(api.achievements.evaluateAndAward);
 
-  // Demo-only mutations (safe to create, but we only call them / show UI if ENABLE_DEMO)
   const seedDemoActivity = useMutation(api.demo.seedDemoActivity);
   const resetDemoBadges = useMutation(api.demo.resetDemoBadges);
 
-  const [busy, setBusy] = useState<null | "eval" | "seed" | "reset">(null);
+  const [busy, setBusy] = useState<null | "seed" | "reset">(null);
   const [status, setStatus] = useState<string>("");
 
   const stats = overview?.stats;
@@ -35,29 +30,28 @@ export default function AchievementsScreen() {
 
   const earnedKeys = useMemo(() => new Set(earnedBadges.map((b) => b.badgeKey)), [earnedBadges]);
 
-  const onEvaluate = async () => {
-    try {
-      setBusy("eval");
-      setStatus("Evaluating achievements…");
+  // ✅ Auto-award once when this screen loads (and data is available)
+  const didAutoAward = useRef(false);
+  useEffect(() => {
+    if (!overview) return;
+    if (didAutoAward.current) return;
+    didAutoAward.current = true;
 
-      // ✅ no args now
-      const res = await evaluateAndAward({});
-
-      setStatus(
-        res?.newlyEarned?.length
-          ? `✅ New badges: ${res.newlyEarned.join(", ")}`
-          : "No new badges yet."
-      );
-    } catch (e: any) {
-      console.error(e);
-      setStatus(`Evaluate failed: ${e?.message ?? "unknown error"}`);
-      if (Platform.OS !== "web") {
-        Alert.alert("Error", e?.message ?? "Failed to evaluate achievements.");
+    (async () => {
+      try {
+        const res = await evaluateAndAward({});
+        if (res?.newlyEarned?.length) {
+          setStatus(`✅ New badges earned: ${res.newlyEarned.join(", ")}`);
+        } else {
+          setStatus(""); // keep it clean if nothing happened
+        }
+      } catch (e: any) {
+        console.error(e);
+        // keep this quiet unless you want it noisy
+        setStatus("");
       }
-    } finally {
-      setBusy(null);
-    }
-  };
+    })();
+  }, [overview, evaluateAndAward]);
 
   const onSeed = async () => {
     if (!ENABLE_DEMO) return;
@@ -65,21 +59,17 @@ export default function AchievementsScreen() {
       setBusy("seed");
       setStatus("Seeding demo activity…");
 
-      // Keep whatever args your demo mutation expects.
-      // If your demo mutation is updated to viewer-based, this can become seedDemoActivity({})
       const res = await seedDemoActivity({ pinsToAdd: 12, sharesToAdd: 3 });
 
       setStatus(
         res?.newlyEarned?.length
           ? `Seeded! Newly earned: ${res.newlyEarned.join(", ")}`
-          : "Seeded demo activity. Press Evaluate to award badges."
+          : "Seeded demo activity."
       );
     } catch (e: any) {
       console.error(e);
       setStatus(`Seed failed: ${e?.message ?? "unknown error"}`);
-      if (Platform.OS !== "web") {
-        Alert.alert("Error", e?.message ?? "Failed to seed demo activity.");
-      }
+      if (Platform.OS !== "web") Alert.alert("Error", e?.message ?? "Failed to seed demo activity.");
     } finally {
       setBusy(null);
     }
@@ -104,16 +94,15 @@ export default function AchievementsScreen() {
       setBusy("reset");
       setStatus("Resetting badges…");
 
-      // ✅ if your reset mutation becomes viewer-based, change to resetDemoBadges({})
       await resetDemoBadges({});
 
       setStatus("♻️ Reset complete ✅");
+      // allow auto-award again after reset (optional)
+      didAutoAward.current = false;
     } catch (e: any) {
       console.error(e);
       setStatus(`Reset failed: ${e?.message ?? "unknown error"}`);
-      if (Platform.OS !== "web") {
-        Alert.alert("Error", e?.message ?? "Failed to reset badges.");
-      }
+      if (Platform.OS !== "web") Alert.alert("Error", e?.message ?? "Failed to reset badges.");
     } finally {
       setBusy(null);
     }
@@ -150,33 +139,25 @@ export default function AchievementsScreen() {
                   <Stat label="Landmark Pins" value={stats?.pinsByCategory?.landmark ?? 0} />
                 </View>
 
-                <View style={{ marginTop: 12, gap: 8 }}>
-                  <ActionButton
-                    text={busy === "eval" ? "Evaluating…" : "Evaluate"}
-                    disabled={!!busy}
-                    onPress={onEvaluate}
-                  />
-
-                  {ENABLE_DEMO && (
-                    <>
-                      <ActionButton
-                        text={busy === "seed" ? "Seeding…" : "Seed Demo"}
-                        disabled={!!busy}
-                        onPress={onSeed}
-                      />
-                      <ActionButton
-                        text={busy === "reset" ? "Resetting…" : "Reset Badges"}
-                        disabled={!!busy}
-                        onPress={onReset}
-                        danger
-                      />
-                    </>
-                  )}
-                </View>
+                {ENABLE_DEMO && (
+                  <View style={{ marginTop: 12, gap: 8 }}>
+                    <ActionButton
+                      text={busy === "seed" ? "Seeding…" : "Seed Demo"}
+                      disabled={!!busy}
+                      onPress={onSeed}
+                    />
+                    <ActionButton
+                      text={busy === "reset" ? "Resetting…" : "Reset Badges"}
+                      disabled={!!busy}
+                      onPress={onReset}
+                      danger
+                    />
+                  </View>
+                )}
 
                 {!ENABLE_DEMO ? (
                   <ThemedText style={{ opacity: 0.7, marginTop: 6 }}>
-                    Demo tools are disabled. Set EXPO_PUBLIC_ENABLE_DEMO=true in .env.local to show them.
+                    Badges award automatically as you use the app.
                   </ThemedText>
                 ) : null}
               </View>
@@ -186,9 +167,7 @@ export default function AchievementsScreen() {
                 <ThemedText type="subtitle">Earned Badges</ThemedText>
 
                 {earnedBadges.length === 0 ? (
-                  <ThemedText style={{ marginTop: 8 }}>
-                    No badges earned yet. Start using the app and press Evaluate!
-                  </ThemedText>
+                  <ThemedText style={{ marginTop: 8 }}>No badges earned yet. Keep pinning!</ThemedText>
                 ) : (
                   <View style={{ marginTop: 10, gap: 10 }}>
                     {earnedBadges.map((b) => (
