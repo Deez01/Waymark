@@ -377,14 +377,14 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
             onPress={handleAddImagePress}
             disabled={isUploadingImages || isSubmitting}
           >
-            <IconSymbol name="plus" size={32} color={theme.text} />
+            <IconSymbol name="add" size={48} color={theme.text} />
           </TouchableOpacity>
           {selectedImages.length === 0 ? (
             <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
               {isUploadingImages ? (
                 <ActivityIndicator color={theme.text} />
               ) : (
-                <IconSymbol name="photo" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
+                <IconSymbol name="photo-library" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
               )}
             </View>
           ) : (
@@ -419,7 +419,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
             </TouchableOpacity>
 
             <View style={styles.addressContainer}>
-              <IconSymbol name="mappin.and.ellipse" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
               <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text>
             </View>
           </View>

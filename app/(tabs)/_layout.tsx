@@ -3,7 +3,7 @@ import React from 'react';
 import { TouchableOpacity, useWindowDimensions } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { MaterialIcons } from '@expo/vector-icons';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 
 import { Colors } from '@/constants/theme';
 import { api } from '@/convex/_generated/api';
@@ -51,7 +51,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'map',
-          tabBarIcon: ({ color }) => <MaterialIcons size={28} name="map" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="map" color={color} />,
         }}
       />
 
@@ -61,7 +61,7 @@ export default function TabLayout() {
         options={{
           title: "Friends",
           tabBarIcon: ({ color }) => (
-            <MaterialIcons size={28} name="people" color={color} />
+            <IconSymbol size={28} name="people" color={color} />
           ),
         }}
       />
@@ -72,7 +72,7 @@ export default function TabLayout() {
         options={{
           title: 'Create',
           tabBarIcon: ({ color }) => (
-            <MaterialIcons size={28} name="add-box" color={color} />
+            <IconSymbol size={28} name="add-box" color={color} />
           ),
           // Adding ': any' tells TypeScript to stop throwing the type clashing error!
           tabBarButton: ({ onPress, ...props }: any) => (
@@ -96,7 +96,7 @@ export default function TabLayout() {
         options={{
           title: 'Badges',
           tabBarIcon: ({ color }) => (
-            <MaterialIcons size={28} name="star" color={color} />
+            <IconSymbol size={28} name="star" color={color} />
           ),
         }}
       />
@@ -107,7 +107,7 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => (
-            <MaterialIcons size={28} name="person" color={color} />
+            <IconSymbol size={28} name="person" color={color} />
           ),
         }}
       />
