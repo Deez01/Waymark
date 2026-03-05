@@ -555,6 +555,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10
   },
+  imagePreviewContainer: {
+    width: 100,
+    height: 120,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginRight: 10,
+    position: 'relative'
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%'
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  removeImageText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 15
+  },
   formContainer: {
     flex: 1
   },
