@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { router, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AddPinSheet from "@/components/AddPinSheet";
 import ViewEditPinSheet from "@/components/ViewEditPinSheet";
@@ -16,6 +17,7 @@ export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
@@ -109,6 +111,15 @@ export default function MapScreen() {
           longitudeDelta: 0.05,
         }}
         customMapStyle={colorScheme === 'dark' ? darkMapStyle : lightMapStyle}
+
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+        mapPadding={{
+          top: 100,
+          right: 10,
+          bottom: 35,
+          left: 10
+        }}
         onLongPress={handleLongPress}
         onPress={() => Keyboard.dismiss()}
         onPanDrag={() => {
@@ -141,7 +152,7 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      <View style={styles.searchOverlay}>
+      <View style={[styles.searchOverlay, { top: insets.top + 10 }]}>
         <View style={[
           styles.searchContainer,
           {
@@ -231,7 +242,7 @@ const lightMapStyle = [
 ];
 
 const styles = StyleSheet.create({
-  searchOverlay: { position: 'absolute', top: 45, left: 20, right: 20, zIndex: 10 },
+  searchOverlay: { position: 'absolute', left: 20, right: 20, zIndex: 10 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16 },
