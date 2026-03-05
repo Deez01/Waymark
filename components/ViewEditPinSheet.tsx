@@ -201,7 +201,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       <BottomSheetScrollView style={styles.scrollWrapper} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
           <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
-            <IconSymbol name="plus" size={32} color={theme.text} />
+            <IconSymbol name="add" size={48} color={theme.text} />
           </TouchableOpacity>
           {pinPictures && pinPictures.length > 0 ? (
             pinPictures.map((picture: { storageId: string; url: string | null }) => (
@@ -211,7 +211,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
             ))
           ) : (
             <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
-              <IconSymbol name="photo" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
+              <IconSymbol name="photo-library" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
             </View>
           )}
         </ScrollView>
@@ -236,7 +236,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
             </TouchableOpacity>
 
             <View style={styles.addressContainer}>
-              <IconSymbol name="mappin.and.ellipse" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
               <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>
                 {pin.address || "No address provided"}
               </Text>
@@ -366,6 +366,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10
+  },
+  placeholderImageBox: {
+    width: 100,
+    height: 120,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10
+  },
+  imagePreviewContainer: {
+    width: 100,
+    height: 120,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginRight: 10,
+    position: 'relative'
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%'
   },
   formContainer: {
     flex: 1
