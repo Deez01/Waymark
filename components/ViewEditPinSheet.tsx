@@ -1,11 +1,12 @@
 // components/ViewEditPinSheet.tsx
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert } from 'react-native';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { api } from '@/convex/_generated/api';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -171,6 +172,19 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     }
   };
 
+  const handleReportPin = () => {
+    if (!pin?._id) return;
+
+    router.push({
+      pathname: '/report-pin',
+      params: {
+        pinId: pin._id,
+        pinTitle: pin.title ?? '',
+        pinAddress: pin.address ?? '',
+      },
+    });
+  };
+
   if (!pin) return null;
 
   // Format the date the pin was created (or fallback to today)
@@ -277,6 +291,10 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
               )}
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity style={styles.reportButton} onPress={handleReportPin}>
+            <Text style={styles.reportButtonText}>Report</Text>
+          </TouchableOpacity>
         </View>
       </BottomSheetScrollView>
 
@@ -482,6 +500,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600'
+  },
+  reportButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  reportButtonText: {
+    color: '#e01b24',
+    fontSize: 14,
+    fontWeight: '700',
   },
   // Modal styles
   modalOverlay: {
