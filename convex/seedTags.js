@@ -60,13 +60,14 @@ export const seedDefaultTags = mutation({
       // Normalize name to lowercase for consistency
       const normalizedName = tagData.name.toLowerCase();
       
-      // Check if tag already exists by name
-      const existing = await ctx.db
+      // Only treat an existing DEFAULT tag as a seed duplicate.
+      const sameNameTags = await ctx.db
         .query("tags")
         .withIndex("by_name", (q) => q.eq("name", normalizedName))
-        .first();
+        .collect();
+      const existingDefault = sameNameTags.find((tag) => tag.isDefault);
 
-      if (existing) {
+      if (existingDefault) {
         skippedCount++;
         continue;
       }
