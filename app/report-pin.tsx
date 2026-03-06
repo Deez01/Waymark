@@ -7,6 +7,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
+// Preset report reasons shown as quick-select chips in the form.
 const REASONS = [
   "Spam",
   "Harassment",
@@ -22,6 +23,7 @@ export default function ReportPinScreen() {
   const colorScheme = useColorScheme();
   const theme = colorScheme === "dark" ? Colors.dark : Colors.light;
 
+  // Route params can arrive as string[] in Expo Router, so normalize first.
   const pinIdParam = Array.isArray(params.pinId) ? params.pinId[0] : params.pinId;
   const pinTitleParam = Array.isArray(params.pinTitle) ? params.pinTitle[0] : params.pinTitle;
   const pinAddressParam = Array.isArray(params.pinAddress) ? params.pinAddress[0] : params.pinAddress;
@@ -34,13 +36,16 @@ export default function ReportPinScreen() {
   const [details, setDetails] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Calls Convex to create a moderation report for this pin.
   const submitReport = useMutation(api.reports.createPinReport);
 
+  // Keep submit disabled until required fields are selected.
   const isDisabled = useMemo(() => {
     return isSubmitting || !pinId || selectedReason.length === 0;
   }, [isSubmitting, pinId, selectedReason]);
 
   const handleSubmit = async () => {
+    // Guard against missing navigation params before sending data to backend.
     if (!pinId) {
       Alert.alert("Error", "Missing pin id");
       return;
@@ -53,6 +58,7 @@ export default function ReportPinScreen() {
 
     setIsSubmitting(true);
     try {
+      // The selected reason is required and extra details are optional context.
       await submitReport({
         pinId,
         reason: selectedReason,

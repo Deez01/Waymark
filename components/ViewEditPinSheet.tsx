@@ -173,6 +173,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   };
 
   const handleReportPin = () => {
+    // Opens the report form and passes pin context so the user reports the correct item.
     if (!pin?._id) return;
 
     router.push({
@@ -292,6 +293,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
             </TouchableOpacity>
           </View>
 
+          {/* Secondary moderation action for content the user wants to report. */}
           <TouchableOpacity style={styles.reportButton} onPress={handleReportPin}>
             <Text style={styles.reportButtonText}>Report</Text>
           </TouchableOpacity>

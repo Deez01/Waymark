@@ -7,6 +7,7 @@ function assertAuthed(userId) {
   return userId;
 }
 
+// Creates a new moderation report record for a pin.
 export const createPinReport = mutation({
   args: {
     pinId: v.id("pins"),
@@ -14,8 +15,10 @@ export const createPinReport = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Only signed-in users can submit reports.
     const userId = assertAuthed(await getAuthUserId(ctx));
 
+    // Trim and validate minimum reason length to avoid empty/low-signal reports.
     const reason = args.reason.trim();
     if (reason.length < 3) {
       throw new Error("Reason must be at least 3 characters");
@@ -23,6 +26,7 @@ export const createPinReport = mutation({
 
     const description = args.description?.trim();
 
+    // Store as pending so moderators can triage later.
     return await ctx.db.insert("reports", {
       reportedBy: userId,
       reportType: "pin",
