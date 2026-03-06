@@ -39,6 +39,7 @@ export default function MapScreen() {
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Filter state that drives the backend query for map pins.
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filterText, setFilterText] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
@@ -84,14 +85,18 @@ export default function MapScreen() {
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   };
 
+  // Only complete month/day/year selections become date filters.
   const startDate = toIsoDate(fromYear, fromMonth, fromDay);
   const endDate = toIsoDate(toYear, toMonth, toDay);
 
+  // Multi-select tags with OR behavior (any selected tag can match).
   const toggleTagSelection = (tagId: Id<"tags">) => {
     setSelectedTagIds((prev) =>
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
     );
   };
+
+  // Main filtered data source for markers on the map.
   const pins = useQuery(api.pins.searchAndFilterMyPins, {
     searchText: filterText.trim() || undefined,
     locationQuery: locationQuery.trim() || undefined,
@@ -109,6 +114,7 @@ export default function MapScreen() {
       }, {})
     : {};
 
+  // Used for the red badge count shown on the Filter button.
   const activeFiltersCount = [
     filterText.trim().length > 0,
     locationQuery.trim().length > 0,
@@ -118,17 +124,20 @@ export default function MapScreen() {
   ].filter(Boolean).length;
 
   useEffect(() => {
+    // If month/year changes, clamp selected day to a valid day for that month.
     if (fromDay && fromDay > fromDayLimit) {
       setFromDay(fromDayLimit);
     }
   }, [fromDay, fromDayLimit]);
 
   useEffect(() => {
+    // Same clamp behavior for the upper-bound date picker.
     if (toDay && toDay > toDayLimit) {
       setToDay(toDayLimit);
     }
   }, [toDay, toDayLimit]);
 
+  // Builds the currently open dropdown options (month/day/year).
   const getPickerOptions = () => {
     if (!openDatePicker) return [] as { value: number; label: string }[];
 
@@ -150,6 +159,7 @@ export default function MapScreen() {
   const pickerOptions = getPickerOptions();
 
   const openPartPicker = (range: "from" | "to", part: "month" | "day" | "year") => {
+    // Tapping an already-open picker closes it (toggle UX).
     setOpenDatePicker((prev) => {
       if (prev && prev.range === range && prev.part === part) {
         return null;
@@ -158,6 +168,7 @@ export default function MapScreen() {
     });
   };
 
+  // Applies the picked value to the correct field, then closes the dropdown.
   const handleSelectDatePart = (value: number) => {
     if (!openDatePicker) return;
 
@@ -175,6 +186,7 @@ export default function MapScreen() {
   };
 
   const dateDisplayText = (part: "month" | "day" | "year", value: number | null) => {
+    // Placeholder labels keep the segmented date UI readable before selection.
     if (!value) {
       if (part === "month") return "Month";
       if (part === "day") return "Day";
@@ -356,6 +368,7 @@ export default function MapScreen() {
         ]}
         onPress={() => setIsFilterModalOpen(true)}
       >
+        {/* Badge reflects how many filter groups are currently active. */}
         <MaterialIcons name="tune" size={18} color={adwaitaBlue} />
         <Text style={[styles.filterFabText, { color: theme.text }]}>Filter</Text>
         {activeFiltersCount > 0 ? (
@@ -384,8 +397,10 @@ export default function MapScreen() {
                 { borderBottomColor: colorScheme === "dark" ? "#2a2a2a" : "#ececec" },
               ]}
             >
+              {/* Fixed header: stays visible while filter content scrolls. */}
               <Text style={[styles.filterHeaderTitle, { color: theme.text }]}>Search & Filter My Pins</Text>
               <TouchableOpacity
+              
                 style={styles.filterHeaderClose}
                 onPress={() => {
                   setOpenDatePicker(null);
@@ -432,6 +447,7 @@ export default function MapScreen() {
             />
 
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Date Range</Text>
+            {/* Two-sided date range using segmented pickers instead of manual typing. */}
             <Text style={[styles.dateLabel, { color: theme.text }]}>From</Text>
             <View
               style={[
@@ -464,6 +480,7 @@ export default function MapScreen() {
                       },
                     ]}
                   >
+                    {/* Dropdown options are generated from the currently active date part. */}
                     <ScrollView style={styles.datePartDropdownList} nestedScrollEnabled>
                       {pickerOptions.map((option) => (
                         <TouchableOpacity
@@ -689,6 +706,7 @@ export default function MapScreen() {
             </View>
 
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Tag</Text>
+            {/* "Any" means no tag filtering (all tags allowed). */}
             <View style={{ marginBottom: 6 }}>
               <TouchableOpacity
                 style={[
@@ -707,6 +725,7 @@ export default function MapScreen() {
 
             {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
               <View key={category} style={{ marginBottom: 10 }}>
+                {/* Tags are grouped for easier scanning when many exist. */}
                 <Text style={[styles.tagCategoryTitle, { color: theme.text }]}>{category}</Text>
                 <View style={[styles.chipRow, { flexDirection: "row", flexWrap: "wrap" }]}>
                   {tags.map((tag: any) => {
@@ -733,6 +752,7 @@ export default function MapScreen() {
               <TouchableOpacity
                 style={[styles.actionButton, styles.resetButton]}
                 onPress={() => {
+                  // Reset clears all filter inputs in one action.
                   setFilterText("");
                   setLocationQuery("");
                   setFromMonth(null);
@@ -748,6 +768,7 @@ export default function MapScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionButton, styles.applyButton]}
+                // Query updates live as state changes; Apply just closes the sheet.
                 onPress={() => setIsFilterModalOpen(false)}
               >
                 <Text style={styles.applyButtonText}>Apply</Text>

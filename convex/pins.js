@@ -8,6 +8,7 @@ function assertAuthed(userId) {
   return userId;
 }
 
+// Parses YYYY-MM-DD input and normalizes to start/end-of-day UTC milliseconds.
 function parseDateInputToMs(dateInput, endOfDay) {
   if (!dateInput) return null;
   const trimmed = dateInput.trim();
@@ -130,12 +131,14 @@ export const searchAndFilterMyPins = query({
     const userId = assertAuthed(await getAuthUserId(ctx));
     const ownerIdStr = userId.toString();
 
+    // Filter scope starts with only the current user's pins.
     let pins = await ctx.db
       .query("pins")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerIdStr))
       .collect();
 
     if (args.tagIds && args.tagIds.length > 0) {
+      // OR tag matching: include pins that have any selected tag.
       const taggedPinIds = new Set();
 
       for (const tagId of args.tagIds) {
@@ -153,6 +156,7 @@ export const searchAndFilterMyPins = query({
     }
 
     if (args.searchText && args.searchText.trim()) {
+      // Free-text search across title, description, caption, and address.
       const term = args.searchText.trim().toLowerCase();
       pins = pins.filter((pin) => {
         const haystack = [pin.title, pin.description, pin.caption, pin.address]
@@ -164,6 +168,7 @@ export const searchAndFilterMyPins = query({
     }
 
     if (args.locationQuery && args.locationQuery.trim()) {
+      // Address substring match (city/street fragments).
       const locationTerm = args.locationQuery.trim().toLowerCase();
       pins = pins.filter((pin) => (pin.address || "").toLowerCase().includes(locationTerm));
     }
@@ -172,6 +177,7 @@ export const searchAndFilterMyPins = query({
     const endMs = parseDateInputToMs(args.endDate, true);
 
     if (startMs !== null || endMs !== null) {
+      // Supports one-sided ranges and reversed input (auto-normalized).
       const lowerBound = startMs !== null && endMs !== null ? Math.min(startMs, endMs) : startMs;
       const upperBound = startMs !== null && endMs !== null ? Math.max(startMs, endMs) : endMs;
 
@@ -182,6 +188,7 @@ export const searchAndFilterMyPins = query({
       });
     }
 
+    // Newest pins first for map and list consistency.
     return pins.sort((a, b) => b.createdAt - a.createdAt);
   },
 });
