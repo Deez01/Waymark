@@ -104,7 +104,14 @@ export const getPinPictures = query({
 
 export const getAllPins = query({
   handler: async (ctx) => {
-    return await ctx.db.query("pins").collect();
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new Error("Unauthorized");
+    }
+    return await ctx.db
+      .query("pins")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", userId.toString()))
+      .collect();
   },
 });
 
