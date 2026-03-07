@@ -47,6 +47,8 @@ export default function FriendScreen() {
         userId: currentUserId,
     });
 
+    const friendIds = friends?.map((f) => f._id) ?? [];
+
     type IncomingRequest = FunctionReturnType<
     typeof api.friends.getIncomingRequests
     >[number];
@@ -177,20 +179,25 @@ export default function FriendScreen() {
                                 
                                 {/* Add Friend Button */}
                                 <TouchableOpacity 
-                                    disabled={pending.includes(item._id)}
+                                    disabled={
+                                        pending.includes(item._id) || 
+                                        friendIds.includes(item._id)
+                                    }
                                     onPress={() => handleSend(item)}
                                     style={{
-                                        backgroundColor: pending.includes(item._id)
-                                            ? "#999"
-                                            : "#007AFF",
+                                        backgroundColor: friendIds.includes(item._id)
+                                           ? "#34C759"
+                                           : pending.includes(item._id)
+                                           ? "#999"
+                                           : "#007AFF",
                                         paddingHorizontal: 12, 
                                         paddingVertical: 6,
                                         borderRadius: 8,
                                     }}
                                 >
                                     <ThemedText style={{ color: "white" }}>
-                                        {pending.includes(item._id)
-                                        ? "Requested"
+                                        {friendIds.includes(item._id)
+                                        ? "Friends"
                                         : "Add Friend"}
                                     </ThemedText>
                                 </TouchableOpacity>
