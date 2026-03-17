@@ -14,6 +14,7 @@ import type * as demo from "../demo.js";
 import type * as devSeed from "../devSeed.js";
 import type * as friends from "../friends.js";
 import type * as http from "../http.js";
+import type * as memories from "../memories.js";
 import type * as pinTags from "../pinTags.js";
 import type * as pins from "../pins.js";
 import type * as seedTags from "../seedTags.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   devSeed: typeof devSeed;
   friends: typeof friends;
   http: typeof http;
+  memories: typeof memories;
   pinTags: typeof pinTags;
   pins: typeof pins;
   seedTags: typeof seedTags;

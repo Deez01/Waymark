@@ -1,4 +1,3 @@
-// Name: Bryan Estrada-Cordoba
 // convex/users.js
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";

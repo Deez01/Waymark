@@ -148,4 +148,17 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_userId_badgeKey", ["userId", "badgeKey"]),
+  
+  memories: defineTable({
+    title: v.string(),
+    description: v.string(),
+    imageUrl: v.optional(v.string()),
+    visibility: v.union(
+      v.literal("Public"),
+      v.literal("Private")
+    ),
+    userId: v.string(), // Owner of the memory
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"]),
 });

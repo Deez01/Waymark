@@ -162,3 +162,36 @@ export const listFriends = query({
         });
     },
 });
+
+export const removeFriend = mutation({
+    args: {
+        userId: v.id("users"),
+        friendId: v.id("users"),
+    },
+    async handler(ctx, args) {
+        const friendship = await ctx.db
+        .query("friendships")
+        .filter((q) =>
+            q.or(
+            q.and(
+                q.eq(q.field("userId1"), args.userId),
+                q.eq(q.field("userId2"), args.friendId),
+                q.eq(q.field("status"), "accepted")  
+            ),
+            q.and(
+                q.eq(q.field("userId1"), args.friendId),
+                q.eq(q.field("userId2"), args.userId),
+                q.eq(q.field("status"), "accepted")  
+            )
+            )
+        )
+        .first();
+
+        if (!friendship) {
+        return { success: false, message: "No accepted friendship exists" };
+        }
+
+        await ctx.db.delete(friendship._id);
+        return { success: true };
+    },
+});
