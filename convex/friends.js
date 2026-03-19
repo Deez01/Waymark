@@ -43,20 +43,32 @@ export const sendFriendRequest = mutation({
     handler: async (ctx, args) => {
         // Prevents self requests
         if (args.senderId === args.receiverId) return;
-
+        
+        // Checks BOTH directions
         const existing = await ctx.db 
-            .query("friendRequests")
-            .withIndex("by_senderId", (q) => q.eq("senderId", args.senderId))
+            .query("friendRequests") 
+            .filter((q) => 
+                q.or(
+                    q.and(
+                        q.eq(q.field("senderId"), args.senderId),
+                        q.eq(q.field("receiverId"), args.receiverId)
+                    ),
+                    q.and(
+                        q.eq(q.field("senderId"), args.receiverId),
+                        q.eq(q.field("receiverId"), args.senderId)
+                    )
+                )
+            )
             .collect();
 
-        const duplicate = existing.find(
-            (r) => 
-                r.receiverId === args.receiverId && 
-            r.status === "pending"
-        );
-        
-        if (duplicate) {
-            return { alreadySent: true };
+        const alreadyFriends = existing.find((r) => r.status === "accepted");
+        if (alreadyFriends) {
+            return { alreadyFriends: true}
+        }
+
+        const pendingRequest = existing.find((r) => r.status === "pending");
+        if (pendingRequest) {
+            return { alreadySent: true}
         }
 
         await ctx.db.insert("friendRequests", {

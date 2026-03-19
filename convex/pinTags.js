@@ -1,20 +1,61 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+
+function assertAuthed(userId) {
+  if (!userId) throw new Error("Not authenticated");
+  return userId;
+}
+
+function isTagVisibleToUser(tag, userId) {
+  return Boolean(tag && (tag.isDefault || (tag.createdBy && tag.createdBy === userId)));
+}
+
+async function getVisibleTagsForUser(ctx, userId) {
+  const defaultTags = await ctx.db
+    .query("tags")
+    .withIndex("by_is_default", (q) => q.eq("isDefault", true))
+    .collect();
+  const userTags = await ctx.db
+    .query("tags")
+    .withIndex("by_creator", (q) => q.eq("createdBy", userId))
+    .collect();
+
+  const byId = new Map();
+  for (const tag of defaultTags) byId.set(tag._id, tag);
+  for (const tag of userTags) byId.set(tag._id, tag);
+
+  return [...byId.values()];
+}
 
 // Get all tags (default + user-created)
 export const getAllTags = query({
   handler: async (ctx) => {
-    return await ctx.db.query("tags").collect();
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    return await getVisibleTagsForUser(ctx, userId);
   },
 });
 
 // Get all pinTags with associated pin title and tag name
 export const getAllPinTagsWithDetails = query({
   handler: async (ctx) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerId = userId.toString();
+    const visibleTags = await getVisibleTagsForUser(ctx, userId);
+    const visibleTagIds = new Set(visibleTags.map((tag) => tag._id));
+
+    const pins = await ctx.db
+      .query("pins")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerId))
+      .collect();
+    const pinIds = new Set(pins.map((pin) => pin._id));
+
     const pinTags = await ctx.db.query("pinTags").collect();
     
     const result = await Promise.all(
-      pinTags.map(async (pt) => {
+      pinTags
+        .filter((pt) => pinIds.has(pt.pinId) && visibleTagIds.has(pt.tagId))
+        .map(async (pt) => {
         const pin = await ctx.db.get(pt.pinId);
         const tag = await ctx.db.get(pt.tagId);
         
@@ -26,7 +67,7 @@ export const getAllPinTagsWithDetails = query({
           tagName: tag?.name || "Unknown Tag",
           tagColor: tag?.color,
         };
-      })
+        })
     );
     
     return result;
@@ -37,6 +78,15 @@ export const getAllPinTagsWithDetails = query({
 export const getUserPinTagsWithDetails = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    const viewerId = assertAuthed(await getAuthUserId(ctx));
+    const ownerId = viewerId.toString();
+    if (args.userId !== ownerId) {
+      throw new Error("Not authorized");
+    }
+
+    const visibleTags = await getVisibleTagsForUser(ctx, viewerId);
+    const visibleTagIds = new Set(visibleTags.map((tag) => tag._id));
+
     // Get all pins for this user
     const pins = await ctx.db
       .query("pins")
@@ -51,7 +101,7 @@ export const getUserPinTagsWithDetails = query({
     // Filter to only pinTags for this user's pins and enrich with details
     const result = await Promise.all(
       allPinTags
-        .filter((pt) => pinIds.has(pt.pinId))
+        .filter((pt) => pinIds.has(pt.pinId) && visibleTagIds.has(pt.tagId))
         .map(async (pt) => {
           const pin = await ctx.db.get(pt.pinId);
           const tag = await ctx.db.get(pt.tagId);
@@ -75,19 +125,25 @@ export const getUserPinTagsWithDetails = query({
 export const getPinTagsWithDetails = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
     const pin = await ctx.db.get(args.pinId);
     
     if (!pin) {
       throw new Error("Pin not found");
     }
     
+    const visibleTags = await getVisibleTagsForUser(ctx, userId);
+    const visibleTagIds = new Set(visibleTags.map((tag) => tag._id));
+
     const pinTags = await ctx.db
       .query("pinTags")
       .withIndex("by_pin", (q) => q.eq("pinId", args.pinId))
       .collect();
     
     const result = await Promise.all(
-      pinTags.map(async (pt) => {
+      pinTags
+        .filter((pt) => visibleTagIds.has(pt.tagId))
+        .map(async (pt) => {
         const tag = await ctx.db.get(pt.tagId);
         
         return {
@@ -98,7 +154,7 @@ export const getPinTagsWithDetails = query({
           tagName: tag?.name || "Unknown Tag",
           tagColor: tag?.color,
         };
-      })
+        })
     );
     
     return result;
@@ -108,7 +164,8 @@ export const getPinTagsWithDetails = query({
 // Get all unique tag categories
 export const getAllCategories = query({
   handler: async (ctx) => {
-    const allTags = await ctx.db.query("tags").collect();
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const allTags = await getVisibleTagsForUser(ctx, userId);
     const categories = [...new Set(allTags.map((tag) => tag.category).filter(Boolean))];
     return categories.sort();
   },
@@ -118,10 +175,13 @@ export const getAllCategories = query({
 export const getTagsByCategory = query({
   args: { category: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const tagsInCategory = await ctx.db
       .query("tags")
       .withIndex("by_category", (q) => q.eq("category", args.category))
       .collect();
+
+    return tagsInCategory.filter((tag) => isTagVisibleToUser(tag, userId));
   },
 });
 
@@ -129,6 +189,7 @@ export const getTagsByCategory = query({
 export const getTagsForPin = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
     const pinTags = await ctx.db
       .query("pinTags")
       .withIndex("by_pin", (q) => q.eq("pinId", args.pinId))
@@ -139,7 +200,7 @@ export const getTagsForPin = query({
       pinTags.map((pt) => ctx.db.get(pt.tagId))
     );
 
-    return tags.filter((t) => t !== null);
+    return tags.filter((t) => isTagVisibleToUser(t, userId));
   },
 });
 
@@ -150,6 +211,9 @@ export const addTagToPin = mutation({
     tagId: v.id("tags"),
   },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerId = userId.toString();
+
     // Get pin and tag details
     const pin = await ctx.db.get(args.pinId);
     const tag = await ctx.db.get(args.tagId);
@@ -160,6 +224,14 @@ export const addTagToPin = mutation({
 
     if (!tag) {
       throw new Error("Tag not found");
+    }
+
+    if (pin.ownerId !== ownerId) {
+      throw new Error("Not authorized");
+    }
+
+    if (!isTagVisibleToUser(tag, userId)) {
+      throw new Error("Not authorized to use this tag");
     }
 
     // Check if already exists
@@ -194,6 +266,18 @@ export const removeTagFromPin = mutation({
     tagId: v.id("tags"),
   },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerId = userId.toString();
+    const pin = await ctx.db.get(args.pinId);
+
+    if (!pin) {
+      throw new Error("Pin not found");
+    }
+
+    if (pin.ownerId !== ownerId) {
+      throw new Error("Not authorized");
+    }
+
     const pinTag = await ctx.db
       .query("pinTags")
       .withIndex("by_pin_and_tag", (q) =>
@@ -215,25 +299,36 @@ export const createTag = mutation({
   args: {
     name: v.string(),
     color: v.optional(v.string()),
-    createdBy: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
-    // Check if tag already exists
-    const existing = await ctx.db
-      .query("tags")
-      .withIndex("by_name", (q) => q.eq("name", args.name.toLowerCase()))
-      .first();
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const normalizedName = args.name.trim().toLowerCase();
+    if (!normalizedName) {
+      throw new Error("Tag name cannot be empty");
+    }
 
-    if (existing) {
-      return existing._id;
+    const sameNameTags = await ctx.db
+      .query("tags")
+      .withIndex("by_name", (q) => q.eq("name", normalizedName))
+      .collect();
+
+    const existingDefault = sameNameTags.find((tag) => tag.isDefault);
+    if (existingDefault) {
+      return existingDefault._id;
+    }
+
+    const existingUserTag = sameNameTags.find((tag) => tag.createdBy === userId);
+
+    if (existingUserTag) {
+      return existingUserTag._id;
     }
 
     // Create new tag
     const tagId = await ctx.db.insert("tags", {
-      name: args.name,
+      name: normalizedName,
       color: args.color,
       isDefault: false,
-      createdBy: args.createdBy,
+      createdBy: userId,
     });
 
     return tagId;
@@ -246,6 +341,7 @@ export const deleteTag = mutation({
     tagId: v.id("tags"),
   },
   handler: async (ctx, args) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
     const tag = await ctx.db.get(args.tagId);
 
     if (!tag) {
@@ -254,6 +350,10 @@ export const deleteTag = mutation({
 
     if (tag.isDefault) {
       throw new Error("Cannot delete default tags");
+    }
+
+    if (tag.createdBy !== userId) {
+      throw new Error("Not authorized to delete this tag");
     }
 
     // Delete all pinTag associations first
