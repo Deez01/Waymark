@@ -27,10 +27,14 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
+      "expo-task-manager",
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Waymark to use your location to create pins."
+          "locationAlwaysAndWhenInUsePermission": "Allow Waymark to use your location to notify you when you're near your saved pins.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [
