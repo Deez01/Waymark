@@ -4,7 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from "convex/react";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image } from "react-native";
 import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,6 +12,73 @@ import AddPinSheet from "@/components/AddPinSheet";
 import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+
+function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
+  const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
+  const imageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
+
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const borderColor = colorScheme === 'dark' ? '#333' : '#ccc';
+
+  useEffect(() => {
+    if (imageUrl === null || !imageId) {
+      setTracksViewChanges(false);
+    }
+  }, [imageUrl, imageId]);
+
+  return (
+    <Marker
+      // THE CACHE BUSTER: This string forces Android to forget the old broken image
+      key={`${pin._id}-cache-bust-1`}
+      coordinate={{ latitude: pin.lat, longitude: pin.lng }}
+      title={pin.title}
+      tracksViewChanges={tracksViewChanges}
+      onPress={onPinPress}
+      onCalloutPress={onCalloutPress}
+    >
+      {/* THE FIX: Outer transparent container with padding. 
+        This expands the snapshot canvas by 5px on every side, ensuring the 
+        engine cannot clip the right/bottom edges of the visible marker inside.
+      */}
+      <View style={{ padding: 5, backgroundColor: 'transparent' }}>
+
+        {/* The visual marker: A colored background block (acting as the border) */}
+        <View style={{
+          backgroundColor: borderColor,
+          width: 56,
+          height: 56,
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          {imageUrl ? (
+            <Image
+              source={{ uri: imageUrl }}
+              // Inner image perfectly centered, leaving a 3px border
+              style={{ width: 50, height: 50, resizeMode: 'cover' }}
+              onLoad={() => {
+                setTimeout(() => setTracksViewChanges(false), 250);
+              }}
+              onError={() => setTracksViewChanges(false)}
+            />
+          ) : (
+            <View style={{
+              width: 50,
+              height: 50,
+              backgroundColor: theme.background,
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
+              <Text style={{ color: theme.text, fontSize: 24, fontWeight: 'bold' }}>
+                {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+      </View>
+    </Marker>
+  );
+}
 
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
@@ -21,9 +88,7 @@ export default function MapScreen() {
   const mapRef = useRef<MapView | null>(null);
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
-
   const adwaitaBlue = '#62a0ea';
-  const adwaitaRed = '#e01b24';
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
@@ -54,60 +119,47 @@ export default function MapScreen() {
     }
   }, [params.openSheet]);
 
-  
   useEffect(() => {
-  const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
-  const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
-  const pinIdParam = typeof params.pinId === "string" ? params.pinId : undefined;
-  const openPinParam = typeof params.openPin === "string" ? params.openPin : undefined;
+    const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
+    const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
+    const pinIdParam = typeof params.pinId === "string" ? params.pinId : undefined;
+    const openPinParam = typeof params.openPin === "string" ? params.openPin : undefined;
 
-  console.log("MAP PARAM DEBUG", {
-    rawLat: params.lat,
-    rawLng: params.lng,
-    rawPinId: params.pinId,
-    rawOpenPin: params.openPin,
-    latParam,
-    lngParam,
-    pinIdParam,
-    openPinParam,
-  });
+    let foundPin: any = null;
 
-  let foundPin: any = null;
+    if (openPinParam === "true" && pinIdParam && pins?.length) {
+      foundPin = pins.find((p: any) => String(p._id) === String(pinIdParam));
 
-  if (openPinParam === "true" && pinIdParam && pins?.length) {
-    foundPin = pins.find((p: any) => String(p._id) === String(pinIdParam));
-
-    if (foundPin) {
-      setSelectedPin(foundPin);
-      setIsViewSheetOpen(true);
-      setViewPinTrigger((prev) => prev + 1);
-      setIsSheetOpen(false);
+      if (foundPin) {
+        setSelectedPin(foundPin);
+        setIsViewSheetOpen(true);
+        setViewPinTrigger((prev) => prev + 1);
+        setIsSheetOpen(false);
+      }
     }
-  }
 
-  const targetLat =
-    foundPin?.lat ??
-    (latParam !== undefined && !Number.isNaN(latParam) ? latParam : undefined);
+    const targetLat =
+      foundPin?.lat ??
+      (latParam !== undefined && !Number.isNaN(latParam) ? latParam : undefined);
 
-  const targetLng =
-    foundPin?.lng ??
-    (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
+    const targetLng =
+      foundPin?.lng ??
+      (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
 
-  if (targetLat !== undefined && targetLng !== undefined) {
-    setTimeout(() => {
-      mapRef.current?.animateToRegion(
-        {
-          latitude: targetLat,
-          longitude: targetLng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        },
-        900
-      );
-    }, 350);
-  }
-}, [params.lat, params.lng, params.pinId, params.openPin, pins]);
-
+    if (targetLat !== undefined && targetLng !== undefined) {
+      setTimeout(() => {
+        mapRef.current?.animateToRegion(
+          {
+            latitude: targetLat,
+            longitude: targetLng,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          },
+          900
+        );
+      }, 350);
+    }
+  }, [params.lat, params.lng, params.pinId, params.openPin, pins]);
 
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
@@ -185,12 +237,12 @@ export default function MapScreen() {
         }}
       >
         {pins?.map((pin: any) => (
-          <Marker
+          <PinMarker
             key={pin._id}
-            coordinate={{ latitude: pin.lat, longitude: pin.lng }}
-            title={pin.title}
-            pinColor={adwaitaRed}
-            onPress={(e) => {
+            pin={pin}
+            colorScheme={colorScheme ?? 'light'}
+            theme={theme}
+            onPinPress={(e: any) => {
               e.stopPropagation();
               setSelectedPin(pin);
               setIsViewSheetOpen(true);
