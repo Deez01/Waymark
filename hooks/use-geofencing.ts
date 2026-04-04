@@ -5,8 +5,8 @@ import { useQuery } from 'convex/react';
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
-export function useGeofencing() {
-  const pins = useQuery(api.pins.getAllPins);
+export function useGeofencing(enabled: boolean = true) {
+  const pins = useQuery(api.pins.getAllPins, enabled ? undefined : "skip");
   const prevPinHashRef = useRef<string>('');
 
   // Re-register geofences when pins change

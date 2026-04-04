@@ -13,7 +13,7 @@ import { setupNotificationHandler } from "@/lib/notifications";
 import { useGeofencing } from "@/hooks/use-geofencing";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { useConvexAuth, ConvexReactClient } from "convex/react";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -42,9 +42,10 @@ function navigateToPin(data: { pinId?: string; lat?: number; lng?: number }) {
   });
 }
 
-// Bridges Convex pins to geofence registration (needs ConvexAuthProvider context)
+// Only runs geofencing when the user is authenticated
 function GeofencingManager() {
-  useGeofencing();
+  const { isAuthenticated } = useConvexAuth();
+  useGeofencing(isAuthenticated);
   return null;
 }
 
