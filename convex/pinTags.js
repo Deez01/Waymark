@@ -11,6 +11,22 @@ function isTagVisibleToUser(tag, userId) {
   return Boolean(tag && (tag.isDefault || (tag.createdBy && tag.createdBy === userId)));
 }
 
+async function canUserEditPin(ctx, userId, pin) {
+  if (!pin) return false;
+  if (pin.ownerId === userId.toString()) return true;
+
+  const shares = await ctx.db
+    .query("pinShares")
+    .withIndex("by_toOwnerId", (q) => q.eq("toOwnerId", userId))
+    .collect();
+
+  return shares.some(
+    (share) =>
+      share.pinId.toString() === pin._id.toString() &&
+      share.canEdit === true
+  );
+}
+
 async function getVisibleTagsForUser(ctx, userId) {
   const defaultTags = await ctx.db
     .query("tags")
@@ -190,6 +206,39 @@ export const getTagsForPin = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
+    const viewerIdStr = userId.toString();
+    const pin = await ctx.db.get(args.pinId);
+
+    if (!pin) {
+      throw new Error("Pin not found");
+    }
+
+    const isOwner = pin.ownerId === viewerIdStr;
+
+    const acceptedShares = await ctx.db
+      .query("pinShares")
+      .withIndex("by_toOwnerId", (q) => q.eq("toOwnerId", userId))
+      .collect();
+
+    const hasAcceptedShare = acceptedShares.some(
+      (share) => share.pinId.toString() === args.pinId.toString()
+    );
+
+    const incomingShareRequests = await ctx.db
+      .query("sharedPins")
+      .withIndex("by_shared_with", (q) => q.eq("sharedWith", userId))
+      .collect();
+
+    const hasPendingRequest = incomingShareRequests.some(
+      (request) =>
+        request.pinId.toString() === args.pinId.toString() &&
+        request.status === "pending"
+    );
+
+    if (!isOwner && !hasAcceptedShare && !hasPendingRequest) {
+      throw new Error("Not authorized");
+    }
+
     const pinTags = await ctx.db
       .query("pinTags")
       .withIndex("by_pin", (q) => q.eq("pinId", args.pinId))
@@ -200,7 +249,7 @@ export const getTagsForPin = query({
       pinTags.map((pt) => ctx.db.get(pt.tagId))
     );
 
-    return tags.filter((t) => isTagVisibleToUser(t, userId));
+    return tags.filter(Boolean);
   },
 });
 
@@ -212,7 +261,6 @@ export const addTagToPin = mutation({
   },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
-    const ownerId = userId.toString();
 
     // Get pin and tag details
     const pin = await ctx.db.get(args.pinId);
@@ -226,7 +274,8 @@ export const addTagToPin = mutation({
       throw new Error("Tag not found");
     }
 
-    if (pin.ownerId !== ownerId) {
+    const canEdit = await canUserEditPin(ctx, userId, pin);
+    if (!canEdit) {
       throw new Error("Not authorized");
     }
 
@@ -267,14 +316,14 @@ export const removeTagFromPin = mutation({
   },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
-    const ownerId = userId.toString();
     const pin = await ctx.db.get(args.pinId);
 
     if (!pin) {
       throw new Error("Pin not found");
     }
 
-    if (pin.ownerId !== ownerId) {
+    const canEdit = await canUserEditPin(ctx, userId, pin);
+    if (!canEdit) {
       throw new Error("Not authorized");
     }
 

@@ -64,6 +64,9 @@ export default defineSchema({
     sharedBy: v.id("users"),
     sharedWith: v.id("users"),
     canEdit: v.boolean(),
+    status: v.optional(v.union(v.literal("pending"), v.literal("accepted"), v.literal("rejected"))),
+    createdAt: v.optional(v.number()),
+    respondedAt: v.optional(v.number()),
   })
     .index("by_pin", ["pinId"])
     .index("by_shared_with", ["sharedWith"])
@@ -135,6 +138,7 @@ export default defineSchema({
     pinId: v.id("pins"),
     fromOwnerId: v.id("users"),
     toOwnerId: v.id("users"),
+    canEdit: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_fromOwnerId", ["fromOwnerId"])

@@ -1,11 +1,11 @@
 // components/ViewEditPinSheet.tsx
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert } from 'react-native';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { api } from '@/convex/_generated/api';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -29,9 +29,14 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   // --- Convex Queries & Mutations ---
   const updatePin = useMutation(api.pins.updatePin);
+  const sharePin = useMutation(api.pins.sharePin);
+  const currentUser = useQuery(api.users.getCurrentUser);
+  const friends = useQuery(api.friends.listFriends, currentUser?._id ? { userId: currentUser._id } : "skip");
   const allTags = useQuery(api.pinTags.getAllTags);
   const pinTags = useQuery(api.pinTags.getTagsForPin, pin ? { pinId: pin._id } : "skip");
   const pinPictures = useQuery(api.pins.getPinPictures, pin ? { pinId: pin._id } : "skip");
+  const pinComments = useQuery(api.pins.getPinComments, pin ? { pinId: pin._id } : "skip");
+  const addPinComment = useMutation(api.pins.addPinComment);
   const createTag = useMutation(api.pinTags.createTag);
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
   const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
@@ -40,9 +45,14 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [newTagName, setNewTagName] = useState("");
+  const [newComment, setNewComment] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
+  const [sharingToUserId, setSharingToUserId] = useState<string | null>(null);
+  const [allowRecipientEdit, setAllowRecipientEdit] = useState(false);
 
   // Organize tags by category for the modal
   const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
@@ -90,6 +100,15 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       setTitle(pin.title || '');
       setDescription(pin.caption || pin.description || '');
       snapTo(1);
+
+      // In some navigation/modal stacks the sheet ref initializes a tick later.
+      // Retry snapping shortly after open so the sheet is actually visible.
+      const t1 = setTimeout(() => snapTo(1), 30);
+      const t2 = setTimeout(() => snapTo(1), 120);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     } else {
       bottomSheetRef.current?.close();
       Keyboard.dismiss();
@@ -171,7 +190,67 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     }
   };
 
+  const handleAddComment = async () => {
+    if (!pin) return;
+    if (!newComment.trim()) {
+      return;
+    }
+
+    setIsSubmittingComment(true);
+    try {
+      await addPinComment({
+        pinId: pin._id,
+        text: newComment,
+      });
+      setNewComment("");
+    } catch (err: any) {
+      const backendMessage = typeof err?.data === 'string' ? err.data : err?.data?.message;
+      Alert.alert("Error", backendMessage ?? err?.message ?? "Failed to add comment");
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleSharePin = async (friendId: any, friendName: string) => {
+    if (!pin) return;
+
+    setSharingToUserId(friendId.toString());
+    try {
+      const result = await sharePin({ pinId: pin._id, toUserId: friendId, canEdit: allowRecipientEdit });
+      if (result?.alreadyRequested) {
+        const statusLabel = result?.requestStatus === "accepted"
+          ? "already accepted"
+          : result?.requestStatus === "rejected"
+            ? "previously rejected"
+            : "already pending";
+        Alert.alert("Already requested", `A share request for ${friendName} is ${statusLabel}.`);
+      } else {
+        Alert.alert(
+          "Request sent",
+          allowRecipientEdit
+            ? `Share request sent to ${friendName} with edit access.`
+            : `Share request sent to ${friendName}.`
+        );
+      }
+      setShowShareModal(false);
+      setAllowRecipientEdit(false);
+    } catch (err: any) {
+      const backendMessage =
+        typeof err?.data === 'string'
+          ? err.data
+          : err?.data?.message;
+      Alert.alert("Error", backendMessage ?? err?.message ?? "Failed to share pin");
+    } finally {
+      setSharingToUserId(null);
+    }
+  };
+
   if (!pin) return null;
+
+  const currentUserId = currentUser?._id ? currentUser._id.toString() : null;
+  const isOwner = currentUserId !== null && pin.ownerId === currentUserId;
+  const canEditPin = isOwner || pin.canEdit === true;
+  const canCommentPin = pin.canComment === true || isOwner;
 
   // Format the date the pin was created (or fallback to today)
   const displayDate = pin.createdAt
@@ -181,7 +260,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   return (
     <BottomSheet
       ref={bottomSheetRef}
-      index={-1}
+      index={isOpen && pin ? 1 : -1}
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
@@ -199,10 +278,21 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       handleIndicatorStyle={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]}
     >
       <BottomSheetScrollView style={styles.scrollWrapper} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
-            <IconSymbol name="add" size={48} color={theme.text} />
+        <View style={styles.closeRow}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={[styles.closeButton, { borderColor: colorScheme === 'dark' ? '#444' : '#ddd' }]}
+          >
+            <Text style={[styles.closeButtonText, { color: theme.text }]}>Close</Text>
           </TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+          {isOwner ? (
+            <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
+              <IconSymbol name="add" size={48} color={theme.text} />
+            </TouchableOpacity>
+          ) : null}
           {pinPictures && pinPictures.length > 0 ? (
             pinPictures.map((picture: { storageId: string; url: string | null }) => (
               <View key={picture.storageId} style={styles.imagePreviewContainer}>
@@ -224,16 +314,36 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
               placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
               value={title}
               onChangeText={setTitle}
-              onFocus={() => snapTo(2)}
+              onFocus={() => {
+                if (canEditPin) snapTo(2);
+              }}
+              editable={canEditPin}
             />
             <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
           </View>
 
           <View style={styles.metaRow}>
-            <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}>
-              <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-              <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text>
-            </TouchableOpacity>
+            <View style={styles.metaButtonsGroup}>
+              <TouchableOpacity
+                style={[styles.metaButton, !canEditPin && { opacity: 0.7 }]}
+                onPress={() => {
+                  if (canEditPin) {
+                    setShowTagModal(true);
+                  }
+                }}
+                disabled={!canEditPin}
+              >
+                <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+                <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>{canEditPin ? 'Tags +' : 'Tags'}</Text>
+              </TouchableOpacity>
+
+              {isOwner ? (
+                <TouchableOpacity style={styles.metaButton} onPress={() => setShowShareModal(true)}>
+                  <IconSymbol name="person-add" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+                  <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Share</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
 
             <View style={styles.addressContainer}>
               <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
@@ -262,20 +372,73 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
               multiline={true}
               value={description}
               onChangeText={setDescription}
-              onFocus={() => snapTo(2)}
+              onFocus={() => {
+                if (canEditPin) snapTo(2);
+              }}
+              editable={canEditPin}
             />
 
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleUpdate}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.saveButtonText}>Update</Text>
-              )}
-            </TouchableOpacity>
+            {canEditPin ? (
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleUpdate}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Update</Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <View style={[styles.commentsSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+            <Text style={[styles.commentsTitle, { color: theme.text }]}>Comments</Text>
+
+            {pinComments === undefined ? (
+              <Text style={[styles.commentsHint, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Loading comments...</Text>
+            ) : pinComments.length === 0 ? (
+              <Text style={[styles.commentsHint, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>No comments yet.</Text>
+            ) : (
+              <View style={styles.commentsList}>
+                {pinComments.map((comment: any) => (
+                  <View key={comment._id} style={[styles.commentItem, { borderBottomColor: colorScheme === 'dark' ? '#2a2a2a' : '#f0f0f0' }]}>
+                    <Text style={[styles.commentAuthor, { color: theme.text }]}>{comment.userName}</Text>
+                    <Text style={[styles.commentText, { color: theme.text }]}>{comment.text}</Text>
+                    <Text style={[styles.commentTime, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>
+                      {new Date(comment.updatedAt).toLocaleString()}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {canCommentPin ? (
+              <View style={styles.commentInputRow}>
+                <TextInput
+                  style={[styles.commentInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ddd', backgroundColor: colorScheme === 'dark' ? '#1f1f1f' : '#fff' }]}
+                  placeholder="Write a comment..."
+                  placeholderTextColor={colorScheme === 'dark' ? '#777' : '#999'}
+                  value={newComment}
+                  onChangeText={setNewComment}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={[styles.commentSendButton, { opacity: isSubmittingComment || !newComment.trim() ? 0.6 : 1 }]}
+                  onPress={handleAddComment}
+                  disabled={isSubmittingComment || !newComment.trim()}
+                >
+                  {isSubmittingComment ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.commentSendText}>Post</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={[styles.commentsHint, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>You can view this pin but cannot comment.</Text>
+            )}
           </View>
         </View>
       </BottomSheetScrollView>
@@ -334,6 +497,69 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
         </View>
       </Modal>
 
+      {/* Share Modal */}
+      <Modal visible={showShareModal} animationType="slide" transparent={true} onRequestClose={() => setShowShareModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}> 
+            <View style={[styles.modalHeader, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Share Pin</Text>
+              <TouchableOpacity onPress={() => {
+                setShowShareModal(false);
+                setAllowRecipientEdit(false);
+              }}>
+                <Text style={[styles.modalCloseText, { color: theme.text }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 16 }}>
+              <View style={[styles.sharePermissionRow, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={[styles.sharePermissionTitle, { color: theme.text }]}>Allow recipient to edit</Text>
+                  <Text style={[styles.sharePermissionSubtitle, { color: colorScheme === 'dark' ? '#aaa' : '#666' }]}>They can update title, notes, and tags after accepting.</Text>
+                </View>
+                <Switch
+                  value={allowRecipientEdit}
+                  onValueChange={setAllowRecipientEdit}
+                  trackColor={{ false: '#767577', true: '#34C759' }}
+                  thumbColor="#fff"
+                />
+              </View>
+
+              {!friends ? (
+                <Text style={{ color: theme.text, opacity: 0.7 }}>Loading friends...</Text>
+              ) : friends.length === 0 ? (
+                <Text style={{ color: theme.text, opacity: 0.7 }}>Add friends first to share this pin.</Text>
+              ) : (
+                friends.map((friend: any) => {
+                  const friendName = friend.name || friend.username || "Friend";
+                  const isSharing = sharingToUserId === friend._id.toString();
+
+                  return (
+                    <View
+                      key={friend._id.toString()}
+                      style={[styles.shareRow, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}
+                    >
+                      <Text style={[styles.shareName, { color: theme.text }]}>{friendName}</Text>
+                      <TouchableOpacity
+                        style={[styles.shareButton, { opacity: isSharing ? 0.7 : 1 }]}
+                        onPress={() => handleSharePin(friend._id, friendName)}
+                        disabled={isSharing}
+                      >
+                        {isSharing ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text style={styles.shareButtonText}>Share</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </BottomSheet>
   );
 }
@@ -354,6 +580,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 20
+  },
+  closeRow: {
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  closeButton: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  closeButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   imageScroll: {
     flexGrow: 0,
@@ -411,6 +651,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12
+  },
+  metaButtonsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   metaButton: {
     flexDirection: 'row',
@@ -471,6 +716,70 @@ const styles = StyleSheet.create({
     flex: 1,
     maxHeight: '100%',
     textAlignVertical: 'top'
+  },
+  commentsSection: {
+    borderTopWidth: 1,
+    marginTop: 10,
+    paddingTop: 12,
+  },
+  commentsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  commentsHint: {
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  commentsList: {
+    marginBottom: 10,
+  },
+  commentItem: {
+    borderBottomWidth: 1,
+    paddingVertical: 8,
+  },
+  commentAuthor: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  commentText: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  commentTime: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  commentInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    marginBottom: 6,
+  },
+  commentInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minHeight: 42,
+    maxHeight: 120,
+    textAlignVertical: 'top',
+  },
+  commentSendButton: {
+    backgroundColor: '#000',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commentSendText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   saveButton: {
     backgroundColor: '#000',
@@ -551,5 +860,47 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14
+  },
+  shareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  shareName: {
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
+    marginRight: 12,
+  },
+  shareButton: {
+    backgroundColor: '#000',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  shareButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  sharePermissionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    paddingBottom: 12,
+    marginBottom: 10,
+  },
+  sharePermissionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  sharePermissionSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
   }
 });

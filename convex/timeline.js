@@ -18,10 +18,43 @@ export const getTimelinePins = query({
     const userId = assertAuthed(await getAuthUserId(ctx));
     const ownerIdStr = userId.toString();
 
-    let pins = await ctx.db
+    const ownedPins = await ctx.db
       .query("pins")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerIdStr))
       .collect();
+
+    const sharedRefs = await ctx.db
+      .query("pinShares")
+      .withIndex("by_toOwnerId", (q) => q.eq("toOwnerId", userId))
+      .collect();
+
+    const sharedPins = await Promise.all(
+      sharedRefs.map(async (share) => {
+        const pin = await ctx.db.get(share.pinId);
+        if (!pin) return null;
+        return {
+          ...pin,
+          isShared: true,
+          sharedBy: share.fromOwnerId,
+          canEdit: share.canEdit === true,
+          canComment: true,
+          isOwner: false,
+        };
+      })
+    );
+
+    const deduped = new Map();
+    for (const pin of ownedPins) {
+      deduped.set(pin._id.toString(), { ...pin, isShared: false, canEdit: true, canComment: true, isOwner: true });
+    }
+    for (const pin of sharedPins) {
+      if (!pin) continue;
+      if (!deduped.has(pin._id.toString())) {
+        deduped.set(pin._id.toString(), pin);
+      }
+    }
+
+    let pins = Array.from(deduped.values());
 
     // Filter by date range if provided
     if (args.startDate !== undefined) {
@@ -51,6 +84,11 @@ export const getTimelinePins = query({
       pictures: pin.pictures ?? [],
       lat: pin.lat,
       lng: pin.lng,
+      isShared: pin.isShared ?? false,
+      sharedBy: pin.sharedBy,
+      canEdit: pin.canEdit === true,
+      canComment: pin.canComment === true,
+      isOwner: pin.isOwner !== false,
     }));
   },
 });
