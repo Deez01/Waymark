@@ -4,7 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from "convex/react";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image } from "react-native";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, useWindowDimensions } from "react-native";
 import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,67 +14,90 @@ import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
 function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
-  const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
-  const imageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
-
-  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const { width } = useWindowDimensions();
   const borderColor = colorScheme === 'dark' ? '#333' : '#ccc';
 
+  const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
+  const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
+
+  const OUTER_SIZE = Math.min(Math.max(width * 0.13, 46), 76);
+  const PADDING = 3;
+  const INNER_SIZE = OUTER_SIZE - (PADDING * 2);
+
+  // 1. Keep tracking ON by default so the map constantly updates while waiting for the network
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  // 2. Handle cases where there is NO image to wait for
   useEffect(() => {
-    if (imageUrl === null || !imageId) {
-      setTracksViewChanges(false);
+    // If the pin has no imageId, or if Convex failed to find the URL (returned null)
+    if (!imageId || fetchedImageUrl === null) {
+      // Give the fallback letter 500ms to paint onto the canvas, then freeze tracking.
+      const timer = setTimeout(() => setTracksViewChanges(false), 500);
+      return () => clearTimeout(timer);
     }
-  }, [imageUrl, imageId]);
+    // If we DO have an imageId, but fetchedImageUrl is still undefined, we do nothing!
+    // tracksViewChanges stays TRUE while we patiently wait for the database.
+  }, [imageId, fetchedImageUrl]);
 
   return (
     <Marker
-      // THE CACHE BUSTER: This string forces Android to forget the old broken image
-      key={`${pin._id}-cache-bust-1`}
+      // THE FIX: A stable, unchanging key. No more destroying and remounting the marker!
+      // This stops Android from glitching out and rendering invisible boxes.
+      key={pin._id}
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
       title={pin.title}
       tracksViewChanges={tracksViewChanges}
       onPress={onPinPress}
       onCalloutPress={onCalloutPress}
     >
-      {/* THE FIX: Outer transparent container with padding. 
-        This expands the snapshot canvas by 5px on every side, ensuring the 
-        engine cannot clip the right/bottom edges of the visible marker inside.
-      */}
-      <View style={{ padding: 5, backgroundColor: 'transparent' }}>
-
-        {/* The visual marker: A colored background block (acting as the border) */}
-        <View style={{
-          backgroundColor: borderColor,
-          width: 56,
-          height: 56,
-          justifyContent: 'center',
-          alignItems: 'center'
-        }}>
-          {imageUrl ? (
-            <Image
-              source={{ uri: imageUrl }}
-              // Inner image perfectly centered, leaving a 3px border
-              style={{ width: 50, height: 50, resizeMode: 'cover' }}
-              onLoad={() => {
-                setTimeout(() => setTracksViewChanges(false), 250);
-              }}
-              onError={() => setTracksViewChanges(false)}
-            />
-          ) : (
-            <View style={{
-              width: 50,
-              height: 50,
+      <View style={{
+        width: OUTER_SIZE,
+        height: OUTER_SIZE,
+        backgroundColor: borderColor,
+        padding: PADDING
+      }}>
+        {fetchedImageUrl ? (
+          <Image
+            source={{ uri: fetchedImageUrl }}
+            resizeMode="contain"
+            resizeMethod="resize" // Keeps memory usage low to prevent crashes
+            style={{
+              width: INNER_SIZE,
+              height: INNER_SIZE,
+              backgroundColor: theme.background
+            }}
+            onLoad={() => {
+              // 3. The heavy image finally finished downloading and decoding!
+              // Give the Android canvas 500ms to paint the pixels, then freeze the snapshot forever.
+              setTimeout(() => setTracksViewChanges(false), 500);
+            }}
+            onError={(e) => {
+              console.log("Marker image failed to download:", e.nativeEvent.error);
+              setTracksViewChanges(false);
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: INNER_SIZE,
+              height: INNER_SIZE,
               backgroundColor: theme.background,
-              justifyContent: 'center',
-              alignItems: 'center'
+            }}
+          >
+            <Text style={{
+              color: theme.text,
+              fontSize: INNER_SIZE * 0.48,
+              fontWeight: 'bold',
+              textAlign: 'center',
+              lineHeight: INNER_SIZE,
+              margin: 0,
+              padding: 0,
+              includeFontPadding: false
             }}>
-              <Text style={{ color: theme.text, fontSize: 24, fontWeight: 'bold' }}>
-                {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
-              </Text>
-            </View>
-          )}
-        </View>
-
+              {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
+            </Text>
+          </View>
+        )}
       </View>
     </Marker>
   );

@@ -108,10 +108,28 @@ export const getAllPins = query({
     if (!userId) {
       throw new Error("Unauthorized");
     }
-    return await ctx.db
+
+    // 1. Get the raw pins
+    const pins = await ctx.db
       .query("pins")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", userId.toString()))
       .collect();
+
+    // 2. Resolve the storage URLs natively on the server
+    const pinsWithUrls = await Promise.all(
+      pins.map(async (pin) => {
+        const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
+        let imageUrl = null;
+
+        if (imageId) {
+          imageUrl = await ctx.storage.getUrl(imageId);
+        }
+
+        return { ...pin, imageUrl };
+      })
+    );
+
+    return pinsWithUrls;
   },
 });
 
