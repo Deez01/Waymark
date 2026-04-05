@@ -17,32 +17,30 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
   const { width } = useWindowDimensions();
   const borderColor = colorScheme === 'dark' ? '#333' : '#ccc';
 
+  // grab the id to fetch the real url from convex
   const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
   const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
 
+  // responsive math so the boxes dont look huge on ipads
   const OUTER_SIZE = Math.min(Math.max(width * 0.13, 46), 76);
   const PADDING = 3;
   const INNER_SIZE = OUTER_SIZE - (PADDING * 2);
 
-  // 1. Keep tracking ON by default so the map constantly updates while waiting for the network
+  // keep tracking on at first so the map actually updates
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
-  // 2. Handle cases where there is NO image to wait for
+  // handle pins that just dont have images
   useEffect(() => {
-    // If the pin has no imageId, or if Convex failed to find the URL (returned null)
     if (!imageId || fetchedImageUrl === null) {
-      // Give the fallback letter 500ms to paint onto the canvas, then freeze tracking.
+      // give the letter half a sec to render then freeze it
       const timer = setTimeout(() => setTracksViewChanges(false), 500);
       return () => clearTimeout(timer);
     }
-    // If we DO have an imageId, but fetchedImageUrl is still undefined, we do nothing!
-    // tracksViewChanges stays TRUE while we patiently wait for the database.
   }, [imageId, fetchedImageUrl]);
 
   return (
     <Marker
-      // THE FIX: A stable, unchanging key. No more destroying and remounting the marker!
-      // This stops Android from glitching out and rendering invisible boxes.
+      // DONT CHANGE THIS KEY. android glitches and makes invisible boxes if you do
       key={pin._id}
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
       title={pin.title}
@@ -59,16 +57,17 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
         {fetchedImageUrl ? (
           <Image
             source={{ uri: fetchedImageUrl }}
-            resizeMode="contain"
-            resizeMethod="resize" // Keeps memory usage low to prevent crashes
+            // changed to 'cover' to force a perfect center-crop that fills the entire inner box
+            resizeMode="cover"
+            // literal lifesaver. stops android from crashing when loading 4k pics
+            resizeMethod="resize"
             style={{
               width: INNER_SIZE,
               height: INNER_SIZE,
               backgroundColor: theme.background
             }}
             onLoad={() => {
-              // 3. The heavy image finally finished downloading and decoding!
-              // Give the Android canvas 500ms to paint the pixels, then freeze the snapshot forever.
+              // finally got it. let it paint for 500ms then shut off tracking forever
               setTimeout(() => setTracksViewChanges(false), 500);
             }}
             onError={(e) => {
