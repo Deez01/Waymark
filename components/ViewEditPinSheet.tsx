@@ -1,6 +1,6 @@
 // components/ViewEditPinSheet.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert, FlatList } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
@@ -9,6 +9,8 @@ import { Image } from 'expo-image';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface ViewEditPinSheetProps {
   isOpen: boolean;
@@ -44,6 +46,9 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   const [newTagName, setNewTagName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
 
+  // --- Gallery State ---
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
   // Organize tags by category for the modal
   const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
     const category = tag.category || "Other";
@@ -75,6 +80,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   useEffect(() => {
     const backAction = () => {
+      // If the gallery is open, close it first
+      if (viewerIndex !== null) {
+        setViewerIndex(null);
+        return true;
+      }
       if (sheetIndex > 0) {
         snapTo(0);
         return true;
@@ -83,7 +93,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [sheetIndex]);
+  }, [sheetIndex, viewerIndex]);
 
   useEffect(() => {
     if (isOpen && pin) {
@@ -102,7 +112,6 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
       let kbHeight = e.endCoordinates.height;
       if (Platform.OS === 'android' && kbHeight < 100) {
-        const screenHeight = Dimensions.get('screen').height;
         const windowHeight = Dimensions.get('window').height;
         kbHeight = screenHeight - windowHeight;
       }
@@ -204,10 +213,15 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
             <IconSymbol name="add" size={48} color={theme.text} />
           </TouchableOpacity>
           {pinPictures && pinPictures.length > 0 ? (
-            pinPictures.map((picture: { storageId: string; url: string | null }) => (
-              <View key={picture.storageId} style={styles.imagePreviewContainer}>
+            pinPictures.map((picture: { storageId: string; url: string | null }, index: number) => (
+              <TouchableOpacity
+                key={picture.storageId}
+                style={styles.imagePreviewContainer}
+                activeOpacity={0.8}
+                onPress={() => setViewerIndex(index)}
+              >
                 {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
-              </View>
+              </TouchableOpacity>
             ))
           ) : (
             <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
@@ -279,6 +293,49 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
           </View>
         </View>
       </BottomSheetScrollView>
+
+      {/* Fullscreen Image Gallery Modal */}
+      <Modal
+        visible={viewerIndex !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setViewerIndex(null)}
+      >
+        <View style={styles.fullscreenGalleryContainer}>
+          <TouchableOpacity
+            style={[styles.fullscreenCloseButton, { top: Platform.OS === 'ios' ? 50 : 30 }]}
+            onPress={() => setViewerIndex(null)}
+          >
+            <Text style={styles.fullscreenCloseText}>✕</Text>
+          </TouchableOpacity>
+
+          <FlatList
+            data={pinPictures}
+            keyExtractor={(item) => item.storageId}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={viewerIndex ?? 0}
+            // getItemLayout is required to use initialScrollIndex safely
+            getItemLayout={(_, index) => ({
+              length: screenWidth,
+              offset: screenWidth * index,
+              index,
+            })}
+            renderItem={({ item }) => (
+              <View style={styles.fullscreenImageWrapper}>
+                {item.url ? (
+                  <Image
+                    source={{ uri: item.url }}
+                    style={styles.fullscreenImage}
+                    contentFit="contain"
+                  />
+                ) : null}
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
 
       {/* Tags Modal */}
       <Modal visible={showTagModal} animationType="slide" transparent={true} onRequestClose={() => setShowTagModal(false)}>
@@ -483,6 +540,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600'
   },
+
+  // Gallery Styles
+  fullscreenGalleryContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fullscreenCloseButton: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 100,
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenCloseText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  fullscreenImageWrapper: {
+    width: screenWidth,
+    height: screenHeight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
+  },
+
   // Modal styles
   modalOverlay: {
     flex: 1,

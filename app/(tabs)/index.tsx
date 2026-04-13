@@ -15,24 +15,18 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 
 function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
   const { width } = useWindowDimensions();
-  const borderColor = colorScheme === 'dark' ? '#333' : '#ccc';
 
-  // grab the id to fetch the real url from convex
-  const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
+  // Check for the micro-thumbnail first! Fall back to the big picture array if needed.
+  const imageId = pin.thumbnail ? pin.thumbnail : (pin.pictures && pin.pictures.length > 0 ? pin.pictures[0] : null);
   const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
 
-  // responsive math so the boxes dont look huge on ipads
-  const OUTER_SIZE = Math.min(Math.max(width * 0.13, 46), 76);
-  const PADDING = 3;
-  const INNER_SIZE = OUTER_SIZE - (PADDING * 2);
+  // Simplified size calculation (no more padding math)
+  const SIZE = Math.min(Math.max(width * 0.13, 46), 76);
 
-  // keep tracking on at first so the map actually updates
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
-  // handle pins that just dont have images
   useEffect(() => {
     if (!imageId || fetchedImageUrl === null) {
-      // give the letter half a sec to render then freeze it
       const timer = setTimeout(() => setTracksViewChanges(false), 500);
       return () => clearTimeout(timer);
     }
@@ -40,7 +34,6 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
 
   return (
     <Marker
-      // DONT CHANGE THIS KEY. android glitches and makes invisible boxes if you do
       key={pin._id}
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
       title={pin.title}
@@ -49,25 +42,26 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
       onCalloutPress={onCalloutPress}
     >
       <View style={{
-        width: OUTER_SIZE,
-        height: OUTER_SIZE,
-        backgroundColor: borderColor,
-        padding: PADDING
+        width: SIZE,
+        height: SIZE,
+        overflow: 'hidden',
+        backgroundColor: theme.background,
+        // Added a subtle shadow so it pops off the map without needing a border
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
       }}>
         {fetchedImageUrl ? (
           <Image
             source={{ uri: fetchedImageUrl }}
-            // changed to 'cover' to force a perfect center-crop that fills the entire inner box
             resizeMode="cover"
-            // literal lifesaver. stops android from crashing when loading 4k pics
-            resizeMethod="resize"
             style={{
-              width: INNER_SIZE,
-              height: INNER_SIZE,
-              backgroundColor: theme.background
+              width: SIZE,
+              height: SIZE,
             }}
             onLoad={() => {
-              // finally got it. let it paint for 500ms then shut off tracking forever
               setTimeout(() => setTracksViewChanges(false), 500);
             }}
             onError={(e) => {
@@ -78,20 +72,17 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
         ) : (
           <View
             style={{
-              width: INNER_SIZE,
-              height: INNER_SIZE,
+              width: SIZE,
+              height: SIZE,
               backgroundColor: theme.background,
+              justifyContent: 'center',
+              alignItems: 'center'
             }}
           >
             <Text style={{
               color: theme.text,
-              fontSize: INNER_SIZE * 0.48,
+              fontSize: SIZE * 0.48,
               fontWeight: 'bold',
-              textAlign: 'center',
-              lineHeight: INNER_SIZE,
-              margin: 0,
-              padding: 0,
-              includeFontPadding: false
             }}>
               {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
             </Text>

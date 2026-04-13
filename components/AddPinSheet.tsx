@@ -4,6 +4,7 @@ import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator'; // <-- Added Manipulator
 import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -45,7 +46,10 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const [lng, setLng] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+
   const [selectedImages, setSelectedImages] = useState<Array<{ storageId: string; uri: string }>>([]);
+  // --- Added state to track the micro-thumbnail ---
+  const [thumbnailStorageId, setThumbnailStorageId] = useState<string | null>(null);
 
   const [showTagModal, setShowTagModal] = useState(false);
   const [selectedTags, setSelectedTags] = useState<any[]>([]);
@@ -147,6 +151,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       setAddress('');
       setSelectedTags([]);
       setSelectedImages([]);
+      setThumbnailStorageId(null); // Reset thumbnail state
     }
   }, [isOpen, initialLat, initialLng, initialTitle, initialAddress]);
 
@@ -197,8 +202,28 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     setIsUploadingImages(true);
     try {
       const asset = result.assets[0];
-      const storageId = await uploadImageUri(asset.uri, asset.mimeType);
-      setSelectedImages((prev) => [...prev, { storageId, uri: asset.uri }]);
+
+      // --- THE FIX: Compress the full image ---
+      const fullImage = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1080 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
+
+      // If this is the first image, create and upload the micro-thumbnail too
+      if (selectedImages.length === 0) {
+        const thumbImage = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 150, height: 150 } }],
+          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        const thumbId = await uploadImageUri(thumbImage.uri, 'image/jpeg');
+        setThumbnailStorageId(thumbId);
+      }
+
+      setSelectedImages((prev) => [...prev, { storageId, uri: fullImage.uri }]);
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
     } finally {
@@ -233,9 +258,31 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     setIsUploadingImages(true);
     try {
       const nextImages: Array<{ storageId: string; uri: string }> = [];
+      let isFirstImage = selectedImages.length === 0;
+
       for (const asset of result.assets.slice(0, remaining)) {
-        const storageId = await uploadImageUri(asset.uri, asset.mimeType);
-        nextImages.push({ storageId, uri: asset.uri });
+        // --- THE FIX: Compress the full image ---
+        const fullImage = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 1080 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+
+        const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
+
+        // Generate thumbnail for the first image only
+        if (isFirstImage) {
+          const thumbImage = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 150, height: 150 } }],
+            { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          const thumbId = await uploadImageUri(thumbImage.uri, 'image/jpeg');
+          setThumbnailStorageId(thumbId);
+          isFirstImage = false;
+        }
+
+        nextImages.push({ storageId, uri: fullImage.uri });
       }
       setSelectedImages((prev) => [...prev, ...nextImages]);
     } catch (error: any) {
@@ -254,7 +301,14 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   };
 
   const handleRemoveImage = (storageId: string) => {
-    setSelectedImages((prev) => prev.filter((image) => image.storageId !== storageId));
+    setSelectedImages((prev) => {
+      const newImages = prev.filter((image) => image.storageId !== storageId);
+      // Clear thumbnail if they delete all images
+      if (newImages.length === 0) {
+        setThumbnailStorageId(null);
+      }
+      return newImages;
+    });
   };
 
   const fetchAddress = async (latitude: number, longitude: number) => {
@@ -327,7 +381,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         lat,
         lng,
         category: "general",
-        thumbnail: selectedImages[0]?.storageId,
+        // --- Passed the new thumbnail state ---
+        thumbnail: thumbnailStorageId || undefined,
         pictures: selectedImages.map((image) => image.storageId),
       });
 
