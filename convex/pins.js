@@ -38,6 +38,7 @@ export const createPin = mutation({
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
     const ownerId = userId.toString();
+
     if (args.pictures && args.pictures.length > 10) {
       throw new Error("A pin can have up to 10 photos");
     }
@@ -87,6 +88,7 @@ export const getPinPictures = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
     const pin = await ctx.db.get(args.pinId);
+
     if (!pin?.pictures || pin.pictures.length === 0) {
       return [];
     }
@@ -109,13 +111,11 @@ export const getAllPins = query({
       throw new Error("Unauthorized");
     }
 
-    // 1. Get the raw pins
     const pins = await ctx.db
       .query("pins")
       .withIndex("by_ownerId", (q) => q.eq("ownerId", userId.toString()))
       .collect();
 
-    // 2. Resolve the storage URLs natively on the server
     const pinsWithUrls = await Promise.all(
       pins.map(async (pin) => {
         const imageId = (pin.pictures && pin.pictures.length > 0) ? pin.pictures[0] : pin.thumbnail;
@@ -155,7 +155,11 @@ export const updateCaption = mutation({
   },
   handler: async (ctx, args) => {
     assertAuthed(await getAuthUserId(ctx));
-    if (args.caption.length > 400) throw new Error("Caption too long (max 400 characters)");
+
+    if (args.caption.length > 400) {
+      throw new Error("Caption too long (max 400 characters)");
+    }
+
     await ctx.db.patch(args.pinId, { caption: args.caption });
   },
 });
@@ -169,6 +173,8 @@ export const updatePin = mutation({
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
     address: v.optional(v.string()),
+    pictures: v.optional(v.array(v.string())),
+    thumbnail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     assertAuthed(await getAuthUserId(ctx));
@@ -184,6 +190,8 @@ export const updatePin = mutation({
     if (args.lat !== undefined) updates.lat = args.lat;
     if (args.lng !== undefined) updates.lng = args.lng;
     if (args.address !== undefined) updates.address = args.address;
+    if (args.pictures !== undefined) updates.pictures = args.pictures;
+    if (args.thumbnail !== undefined) updates.thumbnail = args.thumbnail;
 
     await ctx.db.patch(args.pinId, updates);
   },

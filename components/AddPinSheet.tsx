@@ -1,10 +1,12 @@
+// components/AddPinSheet.tsx
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { api } from '@/convex/_generated/api';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useMutation, useQuery } from 'convex/react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator'; // <-- Added Manipulator
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -48,7 +50,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const [isUploadingImages, setIsUploadingImages] = useState(false);
 
   const [selectedImages, setSelectedImages] = useState<Array<{ storageId: string; uri: string }>>([]);
-  // --- Added state to track the micro-thumbnail ---
   const [thumbnailStorageId, setThumbnailStorageId] = useState<string | null>(null);
 
   const [showTagModal, setShowTagModal] = useState(false);
@@ -151,7 +152,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       setAddress('');
       setSelectedTags([]);
       setSelectedImages([]);
-      setThumbnailStorageId(null); // Reset thumbnail state
+      setThumbnailStorageId(null);
     }
   }, [isOpen, initialLat, initialLng, initialTitle, initialAddress]);
 
@@ -190,7 +191,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: false,
       quality: 1,
     });
@@ -203,7 +204,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     try {
       const asset = result.assets[0];
 
-      // --- THE FIX: Compress the full image ---
       const fullImage = await ImageManipulator.manipulateAsync(
         asset.uri,
         [{ resize: { width: 1080 } }],
@@ -212,7 +212,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
       const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
 
-      // If this is the first image, create and upload the micro-thumbnail too
       if (selectedImages.length === 0) {
         const thumbImage = await ImageManipulator.manipulateAsync(
           asset.uri,
@@ -245,7 +244,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
     const remaining = 10 - selectedImages.length;
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: remaining,
       quality: 1,
@@ -261,7 +260,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       let isFirstImage = selectedImages.length === 0;
 
       for (const asset of result.assets.slice(0, remaining)) {
-        // --- THE FIX: Compress the full image ---
         const fullImage = await ImageManipulator.manipulateAsync(
           asset.uri,
           [{ resize: { width: 1080 } }],
@@ -270,7 +268,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
         const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
 
-        // Generate thumbnail for the first image only
         if (isFirstImage) {
           const thumbImage = await ImageManipulator.manipulateAsync(
             asset.uri,
@@ -303,7 +300,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const handleRemoveImage = (storageId: string) => {
     setSelectedImages((prev) => {
       const newImages = prev.filter((image) => image.storageId !== storageId);
-      // Clear thumbnail if they delete all images
       if (newImages.length === 0) {
         setThumbnailStorageId(null);
       }
@@ -381,7 +377,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         lat,
         lng,
         category: "general",
-        // --- Passed the new thumbnail state ---
         thumbnail: thumbnailStorageId || undefined,
         pictures: selectedImages.map((image) => image.storageId),
       });
@@ -426,7 +421,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+        {/* Swapped ScrollView for GHScrollView here */}
+        <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
           <TouchableOpacity
             style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}
             onPress={handleAddImagePress}
@@ -452,7 +448,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
               </View>
             ))
           )}
-        </ScrollView>
+        </GHScrollView>
 
         <View style={styles.formContainer}>
           <View style={styles.titleRow}>

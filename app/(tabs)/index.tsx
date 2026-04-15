@@ -16,7 +16,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
   const { width } = useWindowDimensions();
 
-  // Check for the micro-thumbnail first! Fall back to the big picture array if needed.
+  // Check for the micro thumbnail first, then fall back to the first picture if available
   const imageId = pin.thumbnail ? pin.thumbnail : (pin.pictures && pin.pictures.length > 0 ? pin.pictures[0] : null);
   const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
 

@@ -2,10 +2,13 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert, FlatList } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -31,6 +34,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   // --- Convex Queries & Mutations ---
   const updatePin = useMutation(api.pins.updatePin);
+  const generateUploadUrl = useMutation(api.pins.generateUploadUrl);
   const allTags = useQuery(api.pinTags.getAllTags);
   const pinTags = useQuery(api.pinTags.getTagsForPin, pin ? { pinId: pin._id } : "skip");
   const pinPictures = useQuery(api.pins.getPinPictures, pin ? { pinId: pin._id } : "skip");
@@ -46,7 +50,10 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   const [newTagName, setNewTagName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
 
-  // --- Gallery State ---
+  // --- Image Upload State ---
+  const [newImages, setNewImages] = useState<Array<{ storageId: string; uri: string }>>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [thumbnailStorageId, setThumbnailStorageId] = useState<string | null>(null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   // Organize tags by category for the modal
@@ -80,7 +87,6 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   useEffect(() => {
     const backAction = () => {
-      // If the gallery is open, close it first
       if (viewerIndex !== null) {
         setViewerIndex(null);
         return true;
@@ -99,6 +105,8 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     if (isOpen && pin) {
       setTitle(pin.title || '');
       setDescription(pin.caption || pin.description || '');
+      setNewImages([]);
+      setThumbnailStorageId(null);
       snapTo(1);
     } else {
       bottomSheetRef.current?.close();
@@ -129,6 +137,149 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       keyboardDidHideListener.remove();
     };
   }, [isOpen]);
+
+  // --- Image Upload Logic ---
+  const uploadImageUri = async (uri: string, mimeType?: string | null) => {
+    const uploadUrl = await generateUploadUrl();
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const uploadResult = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': mimeType || 'image/jpeg' },
+      body: blob,
+    });
+
+    if (!uploadResult.ok) throw new Error('Upload failed');
+    const { storageId } = await uploadResult.json();
+    if (!storageId) throw new Error('Missing storageId after upload');
+    return storageId as string;
+  };
+
+  const handleTakePhoto = async () => {
+    const currentTotal = (pinPictures?.length || 0) + newImages.length;
+    if (currentTotal >= 10) {
+      Alert.alert('Limit reached', 'You can add up to 10 photos per pin.');
+      return;
+    }
+
+    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+    if (cameraPermission.status !== 'granted') {
+      Alert.alert('Permission required', 'Camera permission is required to take photos.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (result.canceled || result.assets.length === 0) return;
+
+    setIsUploadingImages(true);
+    try {
+      const asset = result.assets[0];
+      const fullImage = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1080 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
+
+      if (currentTotal === 0) {
+        const thumbImage = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 150, height: 150 } }],
+          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        const thumbId = await uploadImageUri(thumbImage.uri, 'image/jpeg');
+        setThumbnailStorageId(thumbId);
+      }
+
+      setNewImages((prev) => [...prev, { storageId, uri: fullImage.uri }]);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+
+  const handlePickFromLibrary = async () => {
+    const currentTotal = (pinPictures?.length || 0) + newImages.length;
+    if (currentTotal >= 10) {
+      Alert.alert('Limit reached', 'You can add up to 10 photos per pin.');
+      return;
+    }
+
+    const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (mediaPermission.status !== 'granted') {
+      Alert.alert('Permission required', 'Photo library permission is required to choose images.');
+      return;
+    }
+
+    const remaining = 10 - currentTotal;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+      quality: 1,
+    });
+
+    if (result.canceled || result.assets.length === 0) return;
+
+    setIsUploadingImages(true);
+    try {
+      const nextImages: Array<{ storageId: string; uri: string }> = [];
+      let isFirstImage = currentTotal === 0;
+
+      for (const asset of result.assets.slice(0, remaining)) {
+        const fullImage = await ImageManipulator.manipulateAsync(
+          asset.uri,
+          [{ resize: { width: 1080 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+
+        const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
+
+        if (isFirstImage) {
+          const thumbImage = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 150, height: 150 } }],
+            { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          const thumbId = await uploadImageUri(thumbImage.uri, 'image/jpeg');
+          setThumbnailStorageId(thumbId);
+          isFirstImage = false;
+        }
+
+        nextImages.push({ storageId, uri: fullImage.uri });
+      }
+      setNewImages((prev) => [...prev, ...nextImages]);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload selected images.');
+    } finally {
+      setIsUploadingImages(false);
+    }
+  };
+
+  const handleAddImagePress = () => {
+    Alert.alert('Add Photo', 'Choose a source', [
+      { text: 'Take Photo', onPress: handleTakePhoto },
+      { text: 'Choose from Library', onPress: handlePickFromLibrary },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const handleRemoveNewImage = (storageId: string) => {
+    setNewImages((prev) => {
+      const remainingImages = prev.filter((image) => image.storageId !== storageId);
+      if ((pinPictures?.length || 0) === 0 && remainingImages.length === 0) {
+        setThumbnailStorageId(null);
+      }
+      return remainingImages;
+    });
+  };
 
   // --- Tag Logic ---
   const toggleTagSelection = async (tag: any) => {
@@ -166,11 +317,16 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     if (!pin) return;
     setIsSubmitting(true);
     try {
+      const existingPictures = pin.pictures || [];
+      const combinedPictures = [...existingPictures, ...newImages.map(img => img.storageId)];
+
       await updatePin({
         pinId: pin._id,
         title,
         description,
-        caption: description
+        caption: description,
+        pictures: combinedPictures,
+        ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {})
       });
       onClose();
     } catch (e: any) {
@@ -182,7 +338,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   if (!pin) return null;
 
-  // Format the date the pin was created (or fallback to today)
+  const allViewerPictures = [
+    ...(pinPictures || []),
+    ...newImages.map(img => ({ storageId: img.storageId, url: img.uri }))
+  ];
+
   const displayDate = pin.createdAt
     ? new Date(pin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
     : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
@@ -208,27 +368,52 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       handleIndicatorStyle={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]}
     >
       <BottomSheetScrollView style={styles.scrollWrapper} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
-            <IconSymbol name="add" size={48} color={theme.text} />
+        <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+          <TouchableOpacity
+            style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}
+            onPress={handleAddImagePress}
+            disabled={isUploadingImages || isSubmitting}
+          >
+            {isUploadingImages ? (
+              <ActivityIndicator color={theme.text} />
+            ) : (
+              <IconSymbol name="add" size={48} color={theme.text} />
+            )}
           </TouchableOpacity>
-          {pinPictures && pinPictures.length > 0 ? (
-            pinPictures.map((picture: { storageId: string; url: string | null }, index: number) => (
-              <TouchableOpacity
-                key={picture.storageId}
-                style={styles.imagePreviewContainer}
-                activeOpacity={0.8}
-                onPress={() => setViewerIndex(index)}
-              >
-                {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
+
+          {/* Render Existing Pictures */}
+          {pinPictures && pinPictures.map((picture: { storageId: string; url: string | null }, index: number) => (
+            <TouchableOpacity
+              key={picture.storageId}
+              style={styles.imagePreviewContainer}
+              activeOpacity={0.8}
+              onPress={() => setViewerIndex(index)}
+            >
+              {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
+            </TouchableOpacity>
+          ))}
+
+          {/* Render Newly Staged Pictures */}
+          {newImages.map((image, index) => (
+            <TouchableOpacity
+              key={image.storageId}
+              style={styles.imagePreviewContainer}
+              activeOpacity={0.8}
+              onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}
+            >
+              <Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" />
+              <TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}>
+                <Text style={styles.removeImageText}>x</Text>
               </TouchableOpacity>
-            ))
-          ) : (
+            </TouchableOpacity>
+          ))}
+
+          {((pinPictures?.length || 0) === 0 && newImages.length === 0) && (
             <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
               <IconSymbol name="photo-library" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
             </View>
           )}
-        </ScrollView>
+        </GHScrollView>
 
         <View style={styles.formContainer}>
           <View style={styles.titleRow}>
@@ -282,7 +467,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
             <TouchableOpacity
               style={styles.saveButton}
               onPress={handleUpdate}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isUploadingImages}
             >
               {isSubmitting ? (
                 <ActivityIndicator color="#fff" size="small" />
@@ -310,13 +495,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
           </TouchableOpacity>
 
           <FlatList
-            data={pinPictures}
+            data={allViewerPictures}
             keyExtractor={(item) => item.storageId}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             initialScrollIndex={viewerIndex ?? 0}
-            // getItemLayout is required to use initialScrollIndex safely
             getItemLayout={(_, index) => ({
               length: screenWidth,
               offset: screenWidth * index,
@@ -444,6 +628,23 @@ const styles = StyleSheet.create({
   previewImage: {
     width: '100%',
     height: '100%'
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  removeImageText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 15
   },
   formContainer: {
     flex: 1
