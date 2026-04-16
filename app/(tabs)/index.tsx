@@ -13,16 +13,19 @@ import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
+// Renders an individual custom marker on the map.
 function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
   const { width } = useWindowDimensions();
 
-  // Check for the micro thumbnail first, then fall back to the first picture if available
   const imageId = pin.thumbnail ? pin.thumbnail : (pin.pictures && pin.pictures.length > 0 ? pin.pictures[0] : null);
   const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
 
-  // Simplified size calculation (no more padding math)
-  const SIZE = Math.min(Math.max(width * 0.13, 46), 76);
+  // Base dimensions for the marker UI.
+  const PIN_SIZE = 38;
+  const BORDER_THICKNESS = 2;
+  const IMAGE_SIZE = PIN_SIZE - (BORDER_THICKNESS * 2);
 
+  // Controls native view snapshot updates to prevent rendering issues.
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
@@ -31,6 +34,8 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
       return () => clearTimeout(timer);
     }
   }, [imageId, fetchedImageUrl]);
+
+  const frameColor = colorScheme === 'dark' ? '#2c2c2e' : '#ffffff';
 
   return (
     <Marker
@@ -42,57 +47,65 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
       onCalloutPress={onCalloutPress}
     >
       <View style={{
-        width: SIZE,
-        height: SIZE,
-        overflow: 'hidden',
-        backgroundColor: theme.background,
-        // Added a subtle shadow so it pops off the map without needing a border
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        shadowOffset: { width: 0, height: 2 },
+        width: PIN_SIZE,
+        height: PIN_SIZE + 10,
+        alignItems: 'center'
       }}>
-        {fetchedImageUrl ? (
-          <Image
-            source={{ uri: fetchedImageUrl }}
-            resizeMode="cover"
-            style={{
-              width: SIZE,
-              height: SIZE,
-            }}
-            onLoad={() => {
-              setTimeout(() => setTracksViewChanges(false), 500);
-            }}
-            onError={(e) => {
-              console.log("Marker image failed to download:", e.nativeEvent.error);
-              setTracksViewChanges(false);
-            }}
-          />
-        ) : (
-          <View
-            style={{
-              width: SIZE,
-              height: SIZE,
-              backgroundColor: theme.background,
-              justifyContent: 'center',
-              alignItems: 'center'
-            }}
-          >
-            <Text style={{
-              color: theme.text,
-              fontSize: SIZE * 0.48,
-              fontWeight: 'bold',
-            }}>
-              {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
-            </Text>
+        <View style={{
+          width: PIN_SIZE,
+          height: PIN_SIZE,
+          backgroundColor: frameColor,
+          borderRadius: 8,
+          justifyContent: 'center',
+          alignItems: 'center',
+          elevation: 6,
+          shadowColor: '#000',
+          shadowOpacity: 0.35,
+          shadowRadius: 5,
+          shadowOffset: { width: 0, height: 3 },
+        }}>
+          <View style={{
+            width: IMAGE_SIZE,
+            height: IMAGE_SIZE,
+            borderRadius: 4,
+            overflow: 'hidden',
+            backgroundColor: theme.background,
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
+            {fetchedImageUrl ? (
+              <Image
+                source={{ uri: fetchedImageUrl }}
+                resizeMode="cover"
+                style={{
+                  width: IMAGE_SIZE,
+                  height: IMAGE_SIZE,
+                }}
+                onLoad={() => {
+                  setTimeout(() => setTracksViewChanges(false), 500);
+                }}
+                onError={(e) => {
+                  console.log("Marker image failed to download:", e.nativeEvent.error);
+                  setTracksViewChanges(false);
+                }}
+              />
+            ) : (
+              <Text style={{
+                color: theme.text,
+                fontSize: IMAGE_SIZE * 0.4,
+                fontWeight: 'bold',
+              }}>
+                {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
+              </Text>
+            )}
           </View>
-        )}
+        </View>
       </View>
     </Marker>
   );
 }
 
+// Main map screen component.
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
   const params = useLocalSearchParams();
@@ -103,6 +116,7 @@ export default function MapScreen() {
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
   const adwaitaBlue = '#62a0ea';
 
+  // State definitions for map interactions and overlays.
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
   const [selectedLng, setSelectedLng] = useState<number | undefined>();
@@ -117,6 +131,7 @@ export default function MapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
 
+  // Handle incoming routing parameters to open the add pin sheet.
   useEffect(() => {
     if (params.openSheet === 'true') {
       setSelectedLat(undefined);
@@ -132,6 +147,7 @@ export default function MapScreen() {
     }
   }, [params.openSheet]);
 
+  // Handle map animation and pin selection based on routing parameters.
   useEffect(() => {
     const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
     const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
@@ -174,6 +190,7 @@ export default function MapScreen() {
     }
   }, [params.lat, params.lng, params.pinId, params.openPin, pins]);
 
+  // Handle map long press to drop a new pin.
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setSelectedLat(latitude);
@@ -186,6 +203,7 @@ export default function MapScreen() {
     setSelectedPin(null);
   };
 
+  // Fetch location predictions based on user search input.
   const handleSearchChange = async (text: string) => {
     setSearchQuery(text);
     if (text.length < 3) {
@@ -205,6 +223,7 @@ export default function MapScreen() {
     }
   };
 
+  // Update map and UI state when a search prediction is selected.
   const handleSelectPlace = (place: any) => {
     const mainText = place.name || place.display_name.split(',')[0];
     setSelectedTitle(mainText);
@@ -339,6 +358,7 @@ export default function MapScreen() {
   );
 }
 
+// Styling configurations for the map based on color scheme.
 const darkMapStyle = [
   { "elementType": "geometry", "stylers": [{ "color": "#2d2d2d" }] },
   { "elementType": "labels.text.fill", "stylers": [{ "color": "#77767b" }] },
