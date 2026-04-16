@@ -20,12 +20,10 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
   const imageId = pin.thumbnail ? pin.thumbnail : (pin.pictures && pin.pictures.length > 0 ? pin.pictures[0] : null);
   const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
 
-  // Base dimensions for the marker UI.
   const PIN_SIZE = 38;
   const BORDER_THICKNESS = 2;
   const IMAGE_SIZE = PIN_SIZE - (BORDER_THICKNESS * 2);
 
-  // Controls native view snapshot updates to prevent rendering issues.
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
@@ -116,7 +114,6 @@ export default function MapScreen() {
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
   const adwaitaBlue = '#62a0ea';
 
-  // State definitions for map interactions and overlays.
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
   const [selectedLng, setSelectedLng] = useState<number | undefined>();
@@ -131,23 +128,19 @@ export default function MapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
 
-  // Handle incoming routing parameters to open the add pin sheet.
   useEffect(() => {
     if (params.openSheet === 'true') {
       setSelectedLat(undefined);
       setSelectedLng(undefined);
       setSelectedTitle(undefined);
       setSelectedAddress(undefined);
-
       setIsSheetOpen(true);
       setIsViewSheetOpen(false);
       setSelectedPin(null);
-
       router.setParams({ openSheet: '' });
     }
   }, [params.openSheet]);
 
-  // Handle map animation and pin selection based on routing parameters.
   useEffect(() => {
     const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
     const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
@@ -158,7 +151,6 @@ export default function MapScreen() {
 
     if (openPinParam === "true" && pinIdParam && pins?.length) {
       foundPin = pins.find((p: any) => String(p._id) === String(pinIdParam));
-
       if (foundPin) {
         setSelectedPin(foundPin);
         setIsViewSheetOpen(true);
@@ -167,43 +159,32 @@ export default function MapScreen() {
       }
     }
 
-    const targetLat =
-      foundPin?.lat ??
-      (latParam !== undefined && !Number.isNaN(latParam) ? latParam : undefined);
-
-    const targetLng =
-      foundPin?.lng ??
-      (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
+    const targetLat = foundPin?.lat ?? (latParam !== undefined && !Number.isNaN(latParam) ? latParam : undefined);
+    const targetLng = foundPin?.lng ?? (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
 
     if (targetLat !== undefined && targetLng !== undefined) {
       setTimeout(() => {
-        mapRef.current?.animateToRegion(
-          {
-            latitude: targetLat,
-            longitude: targetLng,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          },
-          900
-        );
+        mapRef.current?.animateToRegion({
+          latitude: targetLat,
+          longitude: targetLng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        }, 900);
       }, 350);
     }
   }, [params.lat, params.lng, params.pinId, params.openPin, pins]);
 
-  // Handle map long press to drop a new pin.
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setSelectedLat(latitude);
     setSelectedLng(longitude);
     setSelectedTitle(undefined);
     setSelectedAddress(undefined);
-
     setIsSheetOpen(true);
     setIsViewSheetOpen(false);
     setSelectedPin(null);
   };
 
-  // Fetch location predictions based on user search input.
   const handleSearchChange = async (text: string) => {
     setSearchQuery(text);
     if (text.length < 3) {
@@ -223,7 +204,6 @@ export default function MapScreen() {
     }
   };
 
-  // Update map and UI state when a search prediction is selected.
   const handleSelectPlace = (place: any) => {
     const mainText = place.name || place.display_name.split(',')[0];
     setSelectedTitle(mainText);
@@ -233,10 +213,17 @@ export default function MapScreen() {
     setSearchQuery('');
     setPredictions([]);
     Keyboard.dismiss();
-
     setIsSheetOpen(true);
     setIsViewSheetOpen(false);
     setSelectedPin(null);
+  };
+
+  // Shared logic to open a pin details sheet.
+  const handleOpenPin = (pin: any) => {
+    setSelectedPin(pin);
+    setIsViewSheetOpen(true);
+    setViewPinTrigger(prev => prev + 1);
+    setIsSheetOpen(false);
   };
 
   return (
@@ -254,12 +241,7 @@ export default function MapScreen() {
         customMapStyle={colorScheme === 'dark' ? darkMapStyle : lightMapStyle}
         showsUserLocation={true}
         showsMyLocationButton={true}
-        mapPadding={{
-          top: 100,
-          right: 10,
-          bottom: 35,
-          left: 10
-        }}
+        mapPadding={{ top: 100, right: 10, bottom: 35, left: 10 }}
         onLongPress={handleLongPress}
         onPress={() => Keyboard.dismiss()}
         onPanDrag={() => {
@@ -276,29 +258,17 @@ export default function MapScreen() {
             theme={theme}
             onPinPress={(e: any) => {
               e.stopPropagation();
-              setSelectedPin(pin);
-              setIsViewSheetOpen(true);
-              setViewPinTrigger(prev => prev + 1);
-              setIsSheetOpen(false);
+              handleOpenPin(pin);
             }}
             onCalloutPress={() => {
-              router.push({
-                pathname: "/edit-caption",
-                params: { pinId: pin._id, currentCaption: pin.caption },
-              });
+              handleOpenPin(pin);
             }}
           />
         ))}
       </MapView>
 
       <View style={[styles.searchOverlay, { top: insets.top + 10 }]}>
-        <View style={[
-          styles.searchContainer,
-          {
-            backgroundColor: theme.background,
-            shadowColor: colorScheme === 'dark' ? '#000' : '#888'
-          }
-        ]}>
+        <View style={[styles.searchContainer, { backgroundColor: theme.background, shadowColor: colorScheme === 'dark' ? '#000' : '#888' }]}>
           <MaterialIcons name="search" size={24} color={adwaitaBlue} style={styles.searchIcon} />
           <TextInput
             style={[styles.searchInput, { color: theme.text }]}
@@ -358,7 +328,6 @@ export default function MapScreen() {
   );
 }
 
-// Styling configurations for the map based on color scheme.
 const darkMapStyle = [
   { "elementType": "geometry", "stylers": [{ "color": "#2d2d2d" }] },
   { "elementType": "labels.text.fill", "stylers": [{ "color": "#77767b" }] },

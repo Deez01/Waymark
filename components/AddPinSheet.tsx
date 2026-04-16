@@ -10,6 +10,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -24,11 +25,18 @@ interface AddPinSheetProps {
   minimizeTrigger?: number;
 }
 
+// Data structure for images staged in the component.
+interface PinImage {
+  storageId: string;
+  uri: string;
+  caption: string;
+}
+
 export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress, minimizeTrigger }: AddPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
 
-  // Theme switch logic
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
@@ -49,14 +57,17 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
 
-  const [selectedImages, setSelectedImages] = useState<Array<{ storageId: string; uri: string }>>([]);
+  const [selectedImages, setSelectedImages] = useState<PinImage[]>([]);
   const [thumbnailStorageId, setThumbnailStorageId] = useState<string | null>(null);
+
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState<number | null>(null);
 
   const [showTagModal, setShowTagModal] = useState(false);
   const [selectedTags, setSelectedTags] = useState<any[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
 
+  // Organizes available tags by their category.
   const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
     const category = tag.category || "Other";
     if (!acc[category]) acc[category] = [];
@@ -67,6 +78,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const programmaticSnapRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Manages the sheet position through programmatic triggers.
   const snapTo = (index: number) => {
     programmaticSnapRef.current = true;
     bottomSheetRef.current?.snapToIndex(index);
@@ -77,6 +89,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }, 100);
   };
 
+  // Minimizes the sheet when external triggers occur.
   useEffect(() => {
     if (minimizeTrigger && minimizeTrigger > 0) {
       Keyboard.dismiss();
@@ -84,8 +97,13 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   }, [minimizeTrigger]);
 
+  // Handles hardware back press events on Android.
   useEffect(() => {
     const backAction = () => {
+      if (activeGalleryIndex !== null) {
+        setActiveGalleryIndex(null);
+        return true;
+      }
       if (sheetIndex > 0) {
         snapTo(0);
         return true;
@@ -95,11 +113,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [sheetIndex]);
+  }, [sheetIndex, activeGalleryIndex]);
 
+  // Adjusts snap points based on keyboard visibility.
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
-      if (!isOpen) return;
+      if (!isOpen || activeGalleryIndex !== null) return;
 
       let kbHeight = e.endCoordinates.height;
 
@@ -118,7 +137,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     });
 
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
-      if (!isOpen) return;
+      if (!isOpen || activeGalleryIndex !== null) return;
       snapTo(1);
     });
 
@@ -126,8 +145,9 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, [isOpen]);
+  }, [isOpen, activeGalleryIndex]);
 
+  // Resets component state when the sheet visibility changes.
   useEffect(() => {
     if (isOpen) {
       snapTo(1);
@@ -153,9 +173,11 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       setSelectedTags([]);
       setSelectedImages([]);
       setThumbnailStorageId(null);
+      setActiveGalleryIndex(null);
     }
   }, [isOpen, initialLat, initialLng, initialTitle, initialAddress]);
 
+  // Uploads a single image to the server and returns its storage ID.
   const uploadImageUri = async (uri: string, mimeType?: string | null) => {
     const uploadUrl = await generateUploadUrl();
     const response = await fetch(uri);
@@ -178,6 +200,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     return storageId as string;
   };
 
+  // Opens the camera, manipulates the image, and uploads it.
   const handleTakePhoto = async () => {
     if (selectedImages.length >= 10) {
       Alert.alert('Limit reached', 'You can add up to 10 photos per pin.');
@@ -222,7 +245,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         setThumbnailStorageId(thumbId);
       }
 
-      setSelectedImages((prev) => [...prev, { storageId, uri: fullImage.uri }]);
+      setSelectedImages((prev) => [...prev, { storageId, uri: fullImage.uri, caption: '' }]);
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
     } finally {
@@ -230,6 +253,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
+  // Allows selecting images from the device gallery.
   const handlePickFromLibrary = async () => {
     if (selectedImages.length >= 10) {
       Alert.alert('Limit reached', 'You can add up to 10 photos per pin.');
@@ -256,7 +280,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
     setIsUploadingImages(true);
     try {
-      const nextImages: Array<{ storageId: string; uri: string }> = [];
+      const nextImages: PinImage[] = [];
       let isFirstImage = selectedImages.length === 0;
 
       for (const asset of result.assets.slice(0, remaining)) {
@@ -279,7 +303,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
           isFirstImage = false;
         }
 
-        nextImages.push({ storageId, uri: fullImage.uri });
+        nextImages.push({ storageId, uri: fullImage.uri, caption: '' });
       }
       setSelectedImages((prev) => [...prev, ...nextImages]);
     } catch (error: any) {
@@ -289,6 +313,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
+  // Prompts user for image source.
   const handleAddImagePress = () => {
     Alert.alert('Add Photo', 'Choose a source', [
       { text: 'Take Photo', onPress: handleTakePhoto },
@@ -297,6 +322,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     ]);
   };
 
+  // Removes a selected image from the state.
   const handleRemoveImage = (storageId: string) => {
     setSelectedImages((prev) => {
       const newImages = prev.filter((image) => image.storageId !== storageId);
@@ -307,6 +333,15 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     });
   };
 
+  // Updates the caption for the currently active gallery image.
+  const handleUpdateCaption = (text: string) => {
+    if (activeGalleryIndex === null) return;
+    const updatedImages = [...selectedImages];
+    updatedImages[activeGalleryIndex].caption = text;
+    setSelectedImages(updatedImages);
+  };
+
+  // Fetches a human-readable address from coordinates.
   const fetchAddress = async (latitude: number, longitude: number) => {
     const fallbackCoords = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
     try {
@@ -324,6 +359,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
+  // Requests location permission and sets current coordinates.
   const handleGetLocation = async () => {
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -337,6 +373,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
+  // Toggles the selection state of a tag.
   const toggleTagSelection = (tag: any) => {
     setSelectedTags((prev) => {
       if (prev.some((t) => t._id === tag._id)) {
@@ -347,6 +384,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     });
   };
 
+  // Creates a new tag with the specified name and color.
   const handleCreateTag = async () => {
     if (!newTagName.trim()) {
       Alert.alert("Error", "Tag name cannot be empty");
@@ -362,6 +400,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
+  // Submits the new pin data to the server.
   const handleCreate = async () => {
     if (!title.trim()) {
       Alert.alert("Title required", "Add a title to save this pin.");
@@ -370,6 +409,17 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     if (lat === null || lng === null) return;
     setIsSubmitting(true);
     try {
+      // Collects storage IDs for the pictures array.
+      const pictureIds = selectedImages.map(img => img.storageId);
+
+      // Builds a dictionary of captions using storage IDs as keys.
+      const captionsDict: Record<string, string> = {};
+      selectedImages.forEach(img => {
+        if (img.caption.trim()) {
+          captionsDict[img.storageId] = img.caption.trim();
+        }
+      });
+
       const newPinId = await createPin({
         title,
         description,
@@ -378,7 +428,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         lng,
         category: "general",
         thumbnail: thumbnailStorageId || undefined,
-        pictures: selectedImages.map((image) => image.storageId),
+        pictures: pictureIds,
+        captions: captionsDict,
       });
 
       if (selectedTags.length > 0) {
@@ -421,7 +472,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Swapped ScrollView for GHScrollView here */}
         <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
           <TouchableOpacity
             style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}
@@ -439,13 +489,13 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
               )}
             </View>
           ) : (
-            selectedImages.map((image) => (
-              <View key={image.storageId} style={styles.imagePreviewContainer}>
+            selectedImages.map((image, index) => (
+              <TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setActiveGalleryIndex(index)} activeOpacity={0.8}>
                 <Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" />
                 <TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveImage(image.storageId)}>
                   <Text style={styles.removeImageText}>x</Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </GHScrollView>
@@ -511,6 +561,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         </View>
       </BottomSheetScrollView>
 
+      {/* Renders the tag selection interface. */}
       <Modal visible={showTagModal} animationType="slide" transparent={true} onRequestClose={() => setShowTagModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
@@ -561,6 +612,40 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
               </View>
             </ScrollView>
           </View>
+        </View>
+      </Modal>
+
+      {/* Renders a full screen image preview with a caption input. */}
+      <Modal visible={activeGalleryIndex !== null} transparent={true} animationType="fade" onRequestClose={() => setActiveGalleryIndex(null)}>
+        <View style={styles.galleryOverlay}>
+          <TouchableOpacity
+            style={[styles.galleryCloseButton, { top: insets.top + 10 }]}
+            onPress={() => setActiveGalleryIndex(null)}
+          >
+            <Text style={styles.galleryCloseText}>✕</Text>
+          </TouchableOpacity>
+
+          {activeGalleryIndex !== null && selectedImages[activeGalleryIndex] && (
+            <View style={styles.galleryContent}>
+              <Image
+                source={{ uri: selectedImages[activeGalleryIndex].uri }}
+                style={styles.galleryMainImage}
+                contentFit="contain"
+              />
+
+              <View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}>
+                <TextInput
+                  style={styles.captionInput}
+                  placeholder="Add a caption..."
+                  placeholderTextColor="#a1a1aa"
+                  value={selectedImages[activeGalleryIndex].caption}
+                  onChangeText={handleUpdateCaption}
+                  multiline={true}
+                  maxLength={150}
+                />
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -653,7 +738,6 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 14
   },
-
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -681,7 +765,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     flexShrink: 1
   },
-
   selectedTagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -698,7 +781,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500'
   },
-
   notesAndSaveRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -722,7 +804,6 @@ const styles = StyleSheet.create({
     maxHeight: '100%',
     textAlignVertical: 'top'
   },
-
   saveButton: {
     backgroundColor: '#000',
     paddingVertical: 12,
@@ -737,7 +818,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600'
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
@@ -805,5 +885,45 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14
+  },
+  galleryOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)'
+  },
+  galleryCloseButton: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 50,
+    padding: 10
+  },
+  galleryCloseText: {
+    color: '#ffffff',
+    fontSize: 28,
+    fontWeight: '600'
+  },
+  galleryContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  galleryMainImage: {
+    width: '100%',
+    height: '100%'
+  },
+  captionInputContainer: {
+    position: 'absolute',
+    width: '90%',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(28, 28, 30, 0.85)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)'
+  },
+  captionInput: {
+    color: '#ffffff',
+    fontSize: 15,
+    maxHeight: 100
   }
 });

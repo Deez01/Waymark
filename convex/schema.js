@@ -6,6 +6,7 @@ import { v } from "convex/values";
 export default defineSchema({
   ...authTables,
 
+  // Stores user profile information and completion status.
   users: defineTable({
     email: v.optional(v.string()),
     username: v.optional(v.string()),
@@ -18,9 +19,9 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_username", ["username"]),
 
-  //Pins table
+  // Core table for map pins and their associated metadata.
   pins: defineTable({
-    ownerId: v.string(), // still string; we store viewer._id.toString()
+    ownerId: v.string(),
     title: v.string(),
     description: v.optional(v.string()),
     lat: v.number(),
@@ -28,14 +29,18 @@ export default defineSchema({
     category: v.optional(v.string()),
     createdAt: v.number(),
     address: v.optional(v.string()),
+    // Legacy support for single caption field to prevent schema validation errors.
     caption: v.optional(v.string()),
     thumbnail: v.optional(v.string()),
     pictures: v.optional(v.array(v.string())),
+    // Stores individual photo captions using storageId as the key.
+    captions: v.optional(v.record(v.string(), v.string())),
     tags: v.optional(v.array(v.string())),
   })
     .index("by_category", ["category"])
     .index("by_ownerId", ["ownerId"]),
 
+  // Definition for reusable tags that can be applied to pins.
   tags: defineTable({
     name: v.string(),
     color: v.optional(v.string()),
@@ -48,6 +53,7 @@ export default defineSchema({
     .index("by_category", ["category"])
     .index("by_creator", ["createdBy"]),
 
+  // Join table linking pins to their assigned tags.
   pinTags: defineTable({
     pinId: v.id("pins"),
     pinTitle: v.string(),
@@ -59,6 +65,7 @@ export default defineSchema({
     .index("by_tag", ["tagId"])
     .index("by_pin_and_tag", ["pinId", "tagId"]),
 
+  // Manages pin sharing permissions between users.
   sharedPins: defineTable({
     pinId: v.id("pins"),
     sharedBy: v.id("users"),
@@ -72,6 +79,7 @@ export default defineSchema({
     .index("by_shared_with", ["sharedWith"])
     .index("by_shared_by", ["sharedBy"]),
 
+  // Tracks relationship status between users.
   friendships: defineTable({
     userId1: v.id("users"),
     userId2: v.id("users"),
@@ -83,6 +91,7 @@ export default defineSchema({
     .index("by_user2", ["userId2"])
     .index("by_status", ["status"]),
 
+  // Stores user comments on specific pins.
   comments: defineTable({
     pinId: v.id("pins"),
     userId: v.id("users"),
@@ -92,6 +101,7 @@ export default defineSchema({
     .index("by_pin", ["pinId"])
     .index("by_user", ["userId"]),
 
+  // Master list of available achievements.
   achievements: defineTable({
     name: v.string(),
     description: v.string(),
@@ -100,6 +110,7 @@ export default defineSchema({
     criteria: v.string(),
   }).index("by_name", ["name"]),
 
+  // Tracks user progress and unlocks for achievements.
   userAchievements: defineTable({
     userId: v.id("users"),
     achievementId: v.id("achievements"),
@@ -110,6 +121,7 @@ export default defineSchema({
     .index("by_achievement", ["achievementId"])
     .index("by_user_and_achievement", ["userId", "achievementId"]),
 
+  // Stores moderation reports for content and users.
   reports: defineTable({
     reportedBy: v.id("users"),
     reportType: v.union(v.literal("pin"), v.literal("comment"), v.literal("user")),
@@ -124,6 +136,7 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_type", ["reportType"]),
 
+  // Management for friend requests.
   friendRequests: defineTable({
     senderId: v.id("users"),
     receiverId: v.id("users"),
@@ -134,6 +147,7 @@ export default defineSchema({
     .index("by_receiverId", ["receiverId"])
     .index("by_status", ["status"]),
 
+  // Tracks history of shared pins.
   pinShares: defineTable({
     pinId: v.id("pins"),
     fromOwnerId: v.id("users"),
@@ -145,6 +159,7 @@ export default defineSchema({
     .index("by_toOwnerId", ["toOwnerId"])
     .index("by_pinId", ["pinId"]),
 
+  // Stores individual badges earned by users.
   userBadges: defineTable({
     userId: v.id("users"),
     badgeKey: v.string(),
