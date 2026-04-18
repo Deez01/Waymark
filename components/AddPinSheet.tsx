@@ -6,7 +6,6 @@ import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useMutation, useQuery } from 'convex/react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -14,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { compressPinImage } from '@/hooks/image-compressor';
 
 interface AddPinSheetProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ interface AddPinSheetProps {
   initialTitle?: string;
   initialAddress?: string;
   minimizeTrigger?: number;
+  openTrigger?: number; // <-- Added to Props
 }
 
 // Data structure for images staged in the component.
@@ -32,7 +33,7 @@ interface PinImage {
   caption: string;
 }
 
-export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress, minimizeTrigger }: AddPinSheetProps) {
+export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, initialTitle, initialAddress, minimizeTrigger, openTrigger }: AddPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -175,7 +176,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       setThumbnailStorageId(null);
       setActiveGalleryIndex(null);
     }
-  }, [isOpen, initialLat, initialLng, initialTitle, initialAddress]);
+  }, [isOpen, initialLat, initialLng, initialTitle, initialAddress, openTrigger]); // <-- Added openTrigger to dependencies
 
   // Uploads a single image to the server and returns its storage ID.
   const uploadImageUri = async (uri: string, mimeType?: string | null) => {
@@ -226,26 +227,19 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     setIsUploadingImages(true);
     try {
       const asset = result.assets[0];
+      const isFirstImage = selectedImages.length === 0;
 
-      const fullImage = await ImageManipulator.manipulateAsync(
-        asset.uri,
-        [{ resize: { width: 1080 } }],
-        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-      );
+      // Use our new custom compressor utility
+      const processed = await compressPinImage(asset.uri, isFirstImage);
 
-      const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
+      const storageId = await uploadImageUri(processed.fullUri, 'image/jpeg');
 
-      if (selectedImages.length === 0) {
-        const thumbImage = await ImageManipulator.manipulateAsync(
-          asset.uri,
-          [{ resize: { width: 150, height: 150 } }],
-          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
-        );
-        const thumbId = await uploadImageUri(thumbImage.uri, 'image/jpeg');
+      if (processed.thumbnailUri) {
+        const thumbId = await uploadImageUri(processed.thumbnailUri, 'image/jpeg');
         setThumbnailStorageId(thumbId);
       }
 
-      setSelectedImages((prev) => [...prev, { storageId, uri: fullImage.uri, caption: '' }]);
+      setSelectedImages((prev) => [...prev, { storageId, uri: processed.fullUri, caption: '' }]);
     } catch (error: any) {
       Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
     } finally {
@@ -284,26 +278,18 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       let isFirstImage = selectedImages.length === 0;
 
       for (const asset of result.assets.slice(0, remaining)) {
-        const fullImage = await ImageManipulator.manipulateAsync(
-          asset.uri,
-          [{ resize: { width: 1080 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-        );
+        // Use our new custom compressor utility
+        const processed = await compressPinImage(asset.uri, isFirstImage);
 
-        const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
+        const storageId = await uploadImageUri(processed.fullUri, 'image/jpeg');
 
-        if (isFirstImage) {
-          const thumbImage = await ImageManipulator.manipulateAsync(
-            asset.uri,
-            [{ resize: { width: 150, height: 150 } }],
-            { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
-          );
-          const thumbId = await uploadImageUri(thumbImage.uri, 'image/jpeg');
+        if (processed.thumbnailUri) {
+          const thumbId = await uploadImageUri(processed.thumbnailUri, 'image/jpeg');
           setThumbnailStorageId(thumbId);
-          isFirstImage = false;
+          isFirstImage = false; // Ensure we only generate one thumbnail
         }
 
-        nextImages.push({ storageId, uri: fullImage.uri, caption: '' });
+        nextImages.push({ storageId, uri: processed.fullUri, caption: '' });
       }
       setSelectedImages((prev) => [...prev, ...nextImages]);
     } catch (error: any) {
@@ -473,31 +459,25 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         keyboardShouldPersistTaps="handled"
       >
         <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+          {selectedImages.map((image, index) => (
+            <TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setActiveGalleryIndex(index)} activeOpacity={0.8}>
+              <Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" />
+              <TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveImage(image.storageId)}>
+                <Text style={styles.removeImageText}>x</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
           <TouchableOpacity
             style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}
             onPress={handleAddImagePress}
             disabled={isUploadingImages || isSubmitting}
           >
-            <IconSymbol name="add" size={48} color={theme.text} />
+            {isUploadingImages ? (
+              <ActivityIndicator color={theme.text} />
+            ) : (
+              <IconSymbol name="add" size={48} color={theme.text} />
+            )}
           </TouchableOpacity>
-          {selectedImages.length === 0 ? (
-            <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
-              {isUploadingImages ? (
-                <ActivityIndicator color={theme.text} />
-              ) : (
-                <IconSymbol name="photo-library" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
-              )}
-            </View>
-          ) : (
-            selectedImages.map((image, index) => (
-              <TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setActiveGalleryIndex(index)} activeOpacity={0.8}>
-                <Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" />
-                <TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveImage(image.storageId)}>
-                  <Text style={styles.removeImageText}>x</Text>
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))
-          )}
         </GHScrollView>
 
         <View style={styles.formContainer}>

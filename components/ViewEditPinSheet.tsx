@@ -8,11 +8,11 @@ import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { compressPinImage } from '@/hooks/image-compressor';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -148,13 +148,26 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     if (cameraPermission.status !== 'granted') return;
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     if (result.canceled || result.assets.length === 0) return;
+
     setIsUploadingImages(true);
     try {
       const asset = result.assets[0];
-      const fullImage = await ImageManipulator.manipulateAsync(asset.uri, [{ resize: { width: 1080 } }], { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG });
-      const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
-      setNewImages((prev) => [...prev, { storageId, uri: fullImage.uri, caption: '' }]);
-    } finally { setIsUploadingImages(false); }
+      const isFirstImage = (pinPictures?.length || 0) === 0 && newImages.length === 0;
+
+      const processed = await compressPinImage(asset.uri, isFirstImage);
+      const storageId = await uploadImageUri(processed.fullUri, 'image/jpeg');
+
+      if (processed.thumbnailUri) {
+        const thumbId = await uploadImageUri(processed.thumbnailUri, 'image/jpeg');
+        setThumbnailStorageId(thumbId);
+      }
+
+      setNewImages((prev) => [...prev, { storageId, uri: processed.fullUri, caption: '' }]);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload photo.');
+    } finally {
+      setIsUploadingImages(false);
+    }
   };
 
   const handlePickFromLibrary = async () => {
@@ -163,14 +176,28 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     const remaining = 10 - currentTotal;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: remaining, quality: 1 });
     if (result.canceled || result.assets.length === 0) return;
+
     setIsUploadingImages(true);
     try {
+      let isFirstImage = (pinPictures?.length || 0) === 0 && newImages.length === 0;
+
       for (const asset of result.assets.slice(0, remaining)) {
-        const fullImage = await ImageManipulator.manipulateAsync(asset.uri, [{ resize: { width: 1080 } }], { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG });
-        const storageId = await uploadImageUri(fullImage.uri, 'image/jpeg');
-        setNewImages((prev) => [...prev, { storageId, uri: fullImage.uri, caption: '' }]);
+        const processed = await compressPinImage(asset.uri, isFirstImage);
+        const storageId = await uploadImageUri(processed.fullUri, 'image/jpeg');
+
+        if (processed.thumbnailUri) {
+          const thumbId = await uploadImageUri(processed.thumbnailUri, 'image/jpeg');
+          setThumbnailStorageId(thumbId);
+          isFirstImage = false; // Only generate thumbnail for the first image
+        }
+
+        setNewImages((prev) => [...prev, { storageId, uri: processed.fullUri, caption: '' }]);
       }
-    } finally { setIsUploadingImages(false); }
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload selected images.');
+    } finally {
+      setIsUploadingImages(false);
+    }
   };
 
   const handleRemoveNewImage = (storageId: string) => {
@@ -270,20 +297,25 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     <BottomSheet ref={bottomSheetRef} index={-1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose} onChange={setSheetIndex} backgroundStyle={{ backgroundColor: theme.background }}>
       <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
         <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>
-            {isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}
-          </TouchableOpacity>
+          {/* 1. Existing Server Pictures */}
           {pinPictures && pinPictures.map((picture: any, index: number) => (
             <TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>
               {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
             </TouchableOpacity>
           ))}
+
+          {/* 2. Newly Uploaded Pictures */}
           {newImages.map((image, index) => (
             <TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}>
               <Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" />
               <TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}><Text style={styles.removeImageText}>x</Text></TouchableOpacity>
             </TouchableOpacity>
           ))}
+
+          {/* 3. Add Photo Button (Anchored to the right) */}
+          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>
+            {isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}
+          </TouchableOpacity>
         </GHScrollView>
         <View style={styles.formContainer}>
           <View style={styles.titleRow}>

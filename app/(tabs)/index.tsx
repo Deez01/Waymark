@@ -115,6 +115,8 @@ export default function MapScreen() {
   const adwaitaBlue = '#62a0ea';
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [addPinTrigger, setAddPinTrigger] = useState(0); // <-- Added trigger state
+
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
   const [selectedLng, setSelectedLng] = useState<number | undefined>();
   const [selectedTitle, setSelectedTitle] = useState<string | undefined>();
@@ -135,6 +137,7 @@ export default function MapScreen() {
       setSelectedTitle(undefined);
       setSelectedAddress(undefined);
       setIsSheetOpen(true);
+      setAddPinTrigger(prev => prev + 1); // <-- Fire the trigger!
       setIsViewSheetOpen(false);
       setSelectedPin(null);
       router.setParams({ openSheet: '' });
@@ -312,6 +315,7 @@ export default function MapScreen() {
         initialTitle={selectedTitle}
         initialAddress={selectedAddress}
         minimizeTrigger={minimizeTrigger}
+        openTrigger={addPinTrigger} // <-- Pass the trigger to the component
       />
 
       <ViewEditPinSheet

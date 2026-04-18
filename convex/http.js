@@ -1,13 +1,18 @@
 // convex/http.js
 import { httpRouter } from "convex/server";
-import { httpAction } from "./_generated/server"; // <-- This import was missing!
+import { httpAction } from "./_generated/server";
+import { auth } from "./auth.js"; // <--- THIS LINE WAS MISSING
 
 const http = httpRouter();
 
+// This wires up all the /api/auth routes for the frontend
+auth.addHttpRoutes(http);
+
+// Your custom image route
 http.route({
   path: "/getImage",
   method: "GET",
-  handler: httpAction(async (ctx, request) => { // <-- Wrapped in httpAction!
+  handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
     const storageId = url.searchParams.get("storageId");
 
