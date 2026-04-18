@@ -192,3 +192,4 @@ export const updatePin = mutation({
     await ctx.db.patch(args.pinId, updates);
   },
 });
+
