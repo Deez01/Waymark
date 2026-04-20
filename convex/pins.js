@@ -34,10 +34,18 @@ export const createPin = mutation({
     thumbnail: v.optional(v.string()),
     pictures: v.optional(v.array(v.string())),
     tags: v.optional(v.array(v.string())),
+
+    // Landmark memory fields
+    isLandmarkMemory: v.optional(v.boolean()),
+    landmarkKey: v.optional(v.string()),
+    landmarkName: v.optional(v.string()),
+    landmarkRegion: v.optional(v.string()),
+    landmarkCollectionKeys: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
     const ownerId = userId.toString();
+
     if (args.pictures && args.pictures.length > 10) {
       throw new Error("A pin can have up to 10 photos");
     }
@@ -55,6 +63,12 @@ export const createPin = mutation({
       thumbnail: args.thumbnail,
       pictures: args.pictures,
       tags: args.tags,
+
+      isLandmarkMemory: args.isLandmarkMemory,
+      landmarkKey: args.landmarkKey,
+      landmarkName: args.landmarkName,
+      landmarkRegion: args.landmarkRegion,
+      landmarkCollectionKeys: args.landmarkCollectionKeys,
     });
 
     await ctx.runMutation(api.achievements.evaluateAndAward, {});
@@ -168,5 +182,21 @@ export const updatePin = mutation({
     if (args.address !== undefined) updates.address = args.address;
 
     await ctx.db.patch(args.pinId, updates);
+  },
+});
+
+// gives a clean way to display/filter landmark memories later
+export const getLandmarkPins = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerIdStr = userId.toString();
+
+    const pins = await ctx.db
+      .query("pins")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerIdStr))
+      .collect();
+
+    return pins.filter((pin) => pin.isLandmarkMemory === true);
   },
 });

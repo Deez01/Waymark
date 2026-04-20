@@ -20,21 +20,28 @@ export default defineSchema({
 
   //Pins table
   pins: defineTable({
-    ownerId: v.string(), // still string; we store viewer._id.toString()
-    title: v.string(),
-    description: v.optional(v.string()),
-    lat: v.number(),
-    lng: v.number(),
-    category: v.optional(v.string()),
-    createdAt: v.number(),
-    address: v.optional(v.string()),
-    caption: v.optional(v.string()),
-    thumbnail: v.optional(v.string()),
-    pictures: v.optional(v.array(v.string())),
-    tags: v.optional(v.array(v.string())),
-  })
-    .index("by_category", ["category"])
-    .index("by_ownerId", ["ownerId"]),
+  ownerId: v.string(),
+  title: v.string(),
+  description: v.optional(v.string()),
+  lat: v.number(),
+  lng: v.number(),
+  category: v.optional(v.string()),
+  createdAt: v.number(),
+  address: v.optional(v.string()),
+  caption: v.optional(v.string()),
+  thumbnail: v.optional(v.string()),
+  pictures: v.optional(v.array(v.string())),
+  tags: v.optional(v.array(v.string())),
+
+  // Landmark memory fields
+  isLandmarkMemory: v.optional(v.boolean()),
+  landmarkKey: v.optional(v.string()),
+  landmarkName: v.optional(v.string()),
+  landmarkRegion: v.optional(v.string()),
+  landmarkCollectionKeys: v.optional(v.array(v.string())),
+})
+  .index("by_category", ["category"])
+  .index("by_ownerId", ["ownerId"]),
 
   tags: defineTable({
     name: v.string(),

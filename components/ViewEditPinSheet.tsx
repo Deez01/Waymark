@@ -1,11 +1,11 @@
 // components/ViewEditPinSheet.tsx
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert } from 'react-native';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { api } from '@/convex/_generated/api';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { useMutation, useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -14,15 +14,24 @@ interface ViewEditPinSheetProps {
   isOpen: boolean;
   onClose: () => void;
   pin: any | null;
+  pins?: any[];
   minimizeTrigger?: number;
   openTrigger?: number;
 }
 
-export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
+export default function ViewEditPinSheet({
+  isOpen,
+  onClose,
+  pin,
+  pins = [],
+  minimizeTrigger,
+  openTrigger,
+}: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
+  const [activePin, setActivePin] = useState<any | null>(null);
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
   const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
@@ -30,8 +39,8 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   // --- Convex Queries & Mutations ---
   const updatePin = useMutation(api.pins.updatePin);
   const allTags = useQuery(api.pinTags.getAllTags);
-  const pinTags = useQuery(api.pinTags.getTagsForPin, pin ? { pinId: pin._id } : "skip");
-  const pinPictures = useQuery(api.pins.getPinPictures, pin ? { pinId: pin._id } : "skip");
+  const pinTags = useQuery(api.pinTags.getTagsForPin, activePin ? { pinId: activePin._id } : "skip");
+  const pinPictures = useQuery(api.pins.getPinPictures, activePin ? { pinId: activePin._id } : "skip");
   const createTag = useMutation(api.pinTags.createTag);
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
   const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
@@ -87,14 +96,23 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
 
   useEffect(() => {
     if (isOpen && pin) {
+      setActivePin(pin);
       setTitle(pin.title || '');
       setDescription(pin.caption || pin.description || '');
       snapTo(1);
     } else {
+      setActivePin(null);
       bottomSheetRef.current?.close();
       Keyboard.dismiss();
     }
   }, [isOpen, pin, openTrigger]);
+
+  useEffect(() => {
+    if (activePin) {
+      setTitle(activePin.title || '');
+      setDescription(activePin.caption || activePin.description || '');
+    }
+  }, [activePin]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -154,11 +172,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   };
 
   const handleUpdate = async () => {
-    if (!pin) return;
+    if (!activePin) return;
     setIsSubmitting(true);
     try {
       await updatePin({
-        pinId: pin._id,
+        pinId: activePin._id,
         title,
         description,
         caption: description
@@ -171,12 +189,20 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     }
   };
 
-  if (!pin) return null;
+  if (!activePin) return null;
 
   // Format the date the pin was created (or fallback to today)
-  const displayDate = pin.createdAt
-    ? new Date(pin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
-    : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
+  const displayDate = activePin.createdAt
+  ? new Date(activePin.createdAt).toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: '2-digit',
+    })
+  : new Date().toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: '2-digit',
+    });
 
   return (
     <BottomSheet
@@ -217,6 +243,49 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
         </ScrollView>
 
         <View style={styles.formContainer}>
+
+          {pins.length > 1 ? (
+            <View style={styles.groupSelectorContainer}>
+              <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>
+                Memories at this location
+              </Text>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.groupSelectorRow}>
+                  {pins.map((groupPin: any, index: number) => {
+                    const isActive = activePin?._id === groupPin._id;
+                    return (
+                      <TouchableOpacity
+                        key={groupPin._id}
+                        onPress={() => setActivePin(groupPin)}
+                        style={[
+                          styles.groupSelectorChip,
+                          {
+                            backgroundColor: isActive
+                              ? theme.tint
+                              : colorScheme === "dark"
+                              ? "#333"
+                              : "#e5e7eb",
+                            borderColor: colorScheme === "dark" ? "#444" : "#ccc",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: isActive ? "#fff" : theme.text,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {groupPin.title || `Memory ${index + 1}`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+
           <View style={styles.titleRow}>
             <TextInput
               style={[styles.titleInput, { color: theme.text }]}
@@ -238,7 +307,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
             <View style={styles.addressContainer}>
               <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
               <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>
-                {pin.address || "No address provided"}
+                {activePin.address || "No address provided"}
               </Text>
             </View>
           </View>
@@ -551,5 +620,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     fontSize: 14
+  },
+  groupSelectorContainer: {
+    marginBottom: 14,
+  },
+  groupSelectorLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 8,
+    opacity: 0.8,
+  },
+  groupSelectorRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  groupSelectorChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
   }
+
 });

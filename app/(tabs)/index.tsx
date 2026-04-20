@@ -1,17 +1,17 @@
 // app/(tabs)/index.tsx
-import { api } from "@/convex/_generated/api";
-import { MaterialIcons } from '@expo/vector-icons';
-import { useQuery } from "convex/react";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import MapView, { LongPressEvent, Marker } from "react-native-maps";
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import AddPinSheet from "@/components/AddPinSheet";
 import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
+import { api } from "@/convex/_generated/api";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { CURATED_LANDMARKS } from "@/lib/landmarks";
+import { MaterialIcons } from '@expo/vector-icons';
+import { useQuery } from "convex/react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import MapView, { LongPressEvent, Marker } from "react-native-maps";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
@@ -19,6 +19,7 @@ export default function MapScreen() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
@@ -33,6 +34,7 @@ export default function MapScreen() {
 
   const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<any>(null);
+  const [selectedPinsAtLocation, setSelectedPinsAtLocation] = useState<any[]>([]);
   const [viewPinTrigger, setViewPinTrigger] = useState(0);
 
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
@@ -54,6 +56,13 @@ export default function MapScreen() {
     }
   }, [params.openSheet]);
 
+  useEffect(() => {
+  return () => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+  };
+}, []);
   
   useEffect(() => {
   const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
@@ -121,24 +130,71 @@ export default function MapScreen() {
     setSelectedPin(null);
   };
 
-  const handleSearchChange = async (text: string) => {
-    setSearchQuery(text);
-    if (text.length < 3) {
-      setPredictions([]);
-      return;
-    }
+const handleSearchChange = (text: string) => {
+  setSearchQuery(text);
+
+  if (searchTimeoutRef.current) {
+    clearTimeout(searchTimeoutRef.current);
+  }
+
+  if (text.trim().length < 2) {
+    setPredictions([]);
+    return;
+  }
+
+  searchTimeoutRef.current = setTimeout(async () => {
+    const lowered = text.toLowerCase();
+
+    const curatedMatches = CURATED_LANDMARKS
+      .filter((landmark) =>
+        landmark.name.toLowerCase().includes(lowered) ||
+        landmark.address.toLowerCase().includes(lowered)
+      )
+      .map((landmark) => ({
+        place_id: `curated-${landmark.key}`,
+        name: landmark.name,
+        display_name: landmark.address,
+        lat: String(landmark.lat),
+        lon: String(landmark.lng),
+        isCuratedLandmark: true,
+        landmarkKey: landmark.key,
+      }));
+
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en&lat=33.783&lon=-118.114`, {
-        headers: { 'User-Agent': 'WaymarkApp/1.0' }
-      });
-      if (!response.ok) return;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=en`,
+        {
+          headers: { "User-Agent": "WaymarkApp/1.0" },
+        }
+      );
+
+      if (!response.ok) {
+        setPredictions(curatedMatches);
+        return;
+      }
+
       const textResponse = await response.text();
       const data = JSON.parse(textResponse);
-      setPredictions(data);
+
+      const combined = [...curatedMatches, ...data];
+
+      const deduped = combined.filter(
+        (item, index, arr) =>
+          index ===
+          arr.findIndex(
+            (other) =>
+              (other.name || other.display_name) ===
+              (item.name || item.display_name)
+          )
+      );
+
+      setPredictions(deduped);
     } catch (e) {
       console.log("Autocomplete error safely caught:", e);
+      setPredictions(curatedMatches);
     }
-  };
+  }, 250);
+};
 
   const handleSelectPlace = (place: any) => {
     const mainText = place.name || place.display_name.split(',')[0];
@@ -153,6 +209,80 @@ export default function MapScreen() {
     setIsSheetOpen(true);
     setIsViewSheetOpen(false);
     setSelectedPin(null);
+  };
+
+  const closeAddPinSheet = () => {
+    setIsSheetOpen(false);
+    setSelectedLat(undefined);
+    setSelectedLng(undefined);
+    setSelectedTitle(undefined);
+    setSelectedAddress(undefined);
+  };
+
+  const pinsWithMarkerOffsets = useMemo(() => {
+    if (!pins?.length) return [];
+
+    const groups = new Map<string, any[]>();
+
+    for (const pin of pins) {
+      const groupKey =
+        pin?.isLandmarkMemory && pin?.landmarkKey
+          ? `landmark:${pin.landmarkKey}`
+          : `coords:${pin.lat}:${pin.lng}`;
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, []);
+      }
+      groups.get(groupKey)!.push(pin);
+    }
+
+    const OFFSET_RADIUS = 0.0005;
+
+    return pins.map((pin) => {
+      const groupKey =
+        pin?.isLandmarkMemory && pin?.landmarkKey
+          ? `landmark:${pin.landmarkKey}`
+          : `coords:${pin.lat}:${pin.lng}`;
+
+      const group = groups.get(groupKey) ?? [];
+
+      if (group.length <= 1) {
+        return {
+          ...pin,
+          markerLat: pin.lat,
+          markerLng: pin.lng,
+        };
+      }
+
+      const indexInGroup = group.findIndex((p) => String(p._id) === String(pin._id));
+      const angle = (2 * Math.PI * indexInGroup) / group.length;
+
+      return {
+        ...pin,
+        markerLat: pin.lat + OFFSET_RADIUS * Math.cos(angle),
+        markerLng: pin.lng + OFFSET_RADIUS * Math.sin(angle),
+      };
+    });
+  }, [pins]);
+
+  const getGroupedPinsForSelection = (pin: any) => {
+    if (!pins?.length) return [pin];
+
+    // Landmark memories: group by landmarkKey
+    if (pin?.isLandmarkMemory && pin?.landmarkKey) {
+      return pins.filter(
+        (p: any) =>
+          p.isLandmarkMemory === true &&
+          p.landmarkKey === pin.landmarkKey
+      );
+    }
+
+    // Non-landmark fallback: same exact coordinates
+    return pins.filter(
+      (p: any) =>
+        p.lat === pin.lat &&
+        p.lng === pin.lng
+    );
   };
 
   return (
@@ -184,17 +314,25 @@ export default function MapScreen() {
           }
         }}
       >
-        {pins?.map((pin: any) => (
+        {pinsWithMarkerOffsets.map((pin: any) => (
           <Marker
             key={pin._id}
-            coordinate={{ latitude: pin.lat, longitude: pin.lng }}
+            coordinate={{ latitude: pin.markerLat, longitude: pin.markerLng }}
             title={pin.title}
             pinColor={adwaitaRed}
             onPress={(e) => {
               e.stopPropagation();
+
+              const groupedPins = getGroupedPinsForSelection(pin);
+
+              setSearchQuery("");
+              setPredictions([]);
+              Keyboard.dismiss();
+
               setSelectedPin(pin);
+              setSelectedPinsAtLocation(groupedPins);
               setIsViewSheetOpen(true);
-              setViewPinTrigger(prev => prev + 1);
+              setViewPinTrigger((prev) => prev + 1);
               setIsSheetOpen(false);
             }}
             onCalloutPress={() => {
@@ -252,7 +390,7 @@ export default function MapScreen() {
 
       <AddPinSheet
         isOpen={isSheetOpen}
-        onClose={() => setIsSheetOpen(false)}
+        onClose={closeAddPinSheet}
         initialLat={selectedLat}
         initialLng={selectedLng}
         initialTitle={selectedTitle}
@@ -265,8 +403,10 @@ export default function MapScreen() {
         onClose={() => {
           setIsViewSheetOpen(false);
           setSelectedPin(null);
+          setSelectedPinsAtLocation([]);
         }}
         pin={selectedPin}
+        pins={selectedPinsAtLocation}
         minimizeTrigger={minimizeTrigger}
         openTrigger={viewPinTrigger}
       />
