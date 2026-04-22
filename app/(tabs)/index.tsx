@@ -4,14 +4,28 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from "convex/react";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, useWindowDimensions } from "react-native";
 import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Localization from 'expo-localization';
 
 import AddPinSheet from "@/components/AddPinSheet";
 import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+
+// Helper function to calculate real-world distance between two coordinates in km
+function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 // Renders an individual custom marker on the map.
 function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
@@ -114,8 +128,15 @@ export default function MapScreen() {
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
   const adwaitaBlue = '#62a0ea';
 
+  const [currentRegion, setCurrentRegion] = useState({
+    latitude: 33.783,
+    longitude: -118.114,
+    latitudeDelta: 0.05,
+    longitudeDelta: 0.05
+  });
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [addPinTrigger, setAddPinTrigger] = useState(0); // <-- Added trigger state
+  const [addPinTrigger, setAddPinTrigger] = useState(0);
 
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
   const [selectedLng, setSelectedLng] = useState<number | undefined>();
@@ -129,6 +150,7 @@ export default function MapScreen() {
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     if (params.openSheet === 'true') {
@@ -137,7 +159,7 @@ export default function MapScreen() {
       setSelectedTitle(undefined);
       setSelectedAddress(undefined);
       setIsSheetOpen(true);
-      setAddPinTrigger(prev => prev + 1); // <-- Fire the trigger!
+      setAddPinTrigger(prev => prev + 1);
       setIsViewSheetOpen(false);
       setSelectedPin(null);
       router.setParams({ openSheet: '' });
@@ -186,42 +208,96 @@ export default function MapScreen() {
     setIsSheetOpen(true);
     setIsViewSheetOpen(false);
     setSelectedPin(null);
+
+    mapRef.current?.animateToRegion({
+      latitude,
+      longitude,
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    }, 500);
   };
 
-  const handleSearchChange = async (text: string) => {
+  const handleSearchChange = (text: string) => {
     setSearchQuery(text);
     if (text.length < 3) {
       setPredictions([]);
+    }
+  };
+
+  const performSearch = async () => {
+    if (searchQuery.length < 3) {
+      setPredictions([]);
       return;
     }
+
+    setIsSearching(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(text)}&format=json&addressdetails=1&limit=5&accept-language=es,en&lat=33.783&lon=-118.114`, {
-        headers: { 'User-Agent': 'WaymarkApp/1.0' }
+      const primaryLang = Localization.getLocales()[0]?.languageCode ?? 'en';
+      const acceptLangString = `${primaryLang},en;q=0.9`;
+
+      // FIX: Instead of using the map's zoom level (which breaks when zoomed in),
+      // we force a fixed ~50km (30 mile) search radius around your exact location.
+      const searchRadius = 0.5; // roughly 50km in degrees
+      const lon1 = currentRegion.longitude - searchRadius;
+      const lat1 = currentRegion.latitude + searchRadius;
+      const lon2 = currentRegion.longitude + searchRadius;
+      const lat2 = currentRegion.latitude - searchRadius;
+      const viewbox = `${lon1},${lat1},${lon2},${lat2}`;
+
+      // We use bounded=1 to strictly trap the search inside that 50km box.
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&addressdetails=1&limit=15&accept-language=${acceptLangString}&viewbox=${viewbox}&bounded=1`, {
+        headers: {
+          'User-Agent': 'WaymarkApp/1.0',
+          'Accept-Language': acceptLangString
+        }
       });
+
       if (!response.ok) return;
-      const textResponse = await response.text();
-      const data = JSON.parse(textResponse);
-      setPredictions(data);
+      const data = await response.json();
+
+      const sortedData = data.map((place: any) => {
+        const distance = getDistanceFromLatLonInKm(
+          currentRegion.latitude,
+          currentRegion.longitude,
+          parseFloat(place.lat),
+          parseFloat(place.lon)
+        );
+        return { ...place, distance };
+      }).sort((a: any, b: any) => a.distance - b.distance).slice(0, 5);
+
+      setPredictions(sortedData);
     } catch (e) {
       console.log("Autocomplete error safely caught:", e);
+    } finally {
+      setIsSearching(false);
     }
   };
 
   const handleSelectPlace = (place: any) => {
     const mainText = place.name || place.display_name.split(',')[0];
+    const lat = parseFloat(place.lat);
+    const lng = parseFloat(place.lon);
+
     setSelectedTitle(mainText);
     setSelectedAddress(place.display_name);
-    setSelectedLat(parseFloat(place.lat));
-    setSelectedLng(parseFloat(place.lon));
+    setSelectedLat(lat);
+    setSelectedLng(lng);
     setSearchQuery('');
     setPredictions([]);
     Keyboard.dismiss();
     setIsSheetOpen(true);
+    setAddPinTrigger(prev => prev + 1);
     setIsViewSheetOpen(false);
     setSelectedPin(null);
+
+    mapRef.current?.animateToRegion({
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    }, 800);
   };
 
-  // Shared logic to open a pin details sheet.
   const handleOpenPin = (pin: any) => {
     setSelectedPin(pin);
     setIsViewSheetOpen(true);
@@ -247,12 +323,23 @@ export default function MapScreen() {
         mapPadding={{ top: 100, right: 10, bottom: 35, left: 10 }}
         onLongPress={handleLongPress}
         onPress={() => Keyboard.dismiss()}
+        onRegionChangeComplete={(region) => setCurrentRegion(region)}
         onPanDrag={() => {
+          Keyboard.dismiss();
           if (isSheetOpen || isViewSheetOpen) {
             setMinimizeTrigger(prev => prev + 1);
           }
         }}
       >
+        {isSheetOpen && selectedLat !== undefined && selectedLng !== undefined && (
+          <Marker
+            coordinate={{ latitude: selectedLat, longitude: selectedLng }}
+            title="New Pin"
+            zIndex={999}
+            onPress={() => setAddPinTrigger(prev => prev + 1)}
+          />
+        )}
+
         {pins?.map((pin: any) => (
           <PinMarker
             key={pin._id}
@@ -272,14 +359,28 @@ export default function MapScreen() {
 
       <View style={[styles.searchOverlay, { top: insets.top + 10 }]}>
         <View style={[styles.searchContainer, { backgroundColor: theme.background, shadowColor: colorScheme === 'dark' ? '#000' : '#888' }]}>
-          <MaterialIcons name="search" size={24} color={adwaitaBlue} style={styles.searchIcon} />
+          {isSearching ? (
+            <ActivityIndicator size="small" color={adwaitaBlue} style={styles.searchIcon} />
+          ) : (
+            <MaterialIcons name="search" size={24} color={adwaitaBlue} style={styles.searchIcon} />
+          )}
+
           <TextInput
             style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search for a place..."
             placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
             value={searchQuery}
             onChangeText={handleSearchChange}
+            onSubmitEditing={performSearch}
+            blurOnSubmit={false}
+            returnKeyType="search"
+            onFocus={() => {
+              if (isViewSheetOpen) {
+                setMinimizeTrigger(prev => prev + 1);
+              }
+            }}
           />
+
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); }}>
               <MaterialIcons name="close" size={20} color={adwaitaBlue} />
@@ -299,7 +400,7 @@ export default function MapScreen() {
                   {p.name || p.display_name.split(',')[0]}
                 </Text>
                 <Text style={[styles.predictionSubText, { color: colorScheme === 'dark' ? '#77767b' : '#9a9996' }]} numberOfLines={1}>
-                  {p.display_name}
+                  {p.distance < 1 ? `${(p.distance * 1000).toFixed(0)}m away • ` : `${p.distance.toFixed(1)}km away • `}{p.display_name}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -315,7 +416,17 @@ export default function MapScreen() {
         initialTitle={selectedTitle}
         initialAddress={selectedAddress}
         minimizeTrigger={minimizeTrigger}
-        openTrigger={addPinTrigger} // <-- Pass the trigger to the component
+        openTrigger={addPinTrigger}
+        onLocationChange={(lat, lng) => {
+          setSelectedLat(lat);
+          setSelectedLng(lng);
+          mapRef.current?.animateToRegion({
+            latitude: lat,
+            longitude: lng,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          }, 800);
+        }}
       />
 
       <ViewEditPinSheet
