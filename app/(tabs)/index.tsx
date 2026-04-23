@@ -3,7 +3,7 @@ import { api } from "@/convex/_generated/api";
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from "convex/react";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, useWindowDimensions } from "react-native";
 import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import AddPinSheet from "@/components/AddPinSheet";
 import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { CURATED_LANDMARKS } from "@/lib/landmarks";
 
 // Helper function to calculate real-world distance between two coordinates in km
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -52,7 +53,7 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
   return (
     <Marker
       key={pin._id}
-      coordinate={{ latitude: pin.lat, longitude: pin.lng }}
+      coordinate={{ latitude: pin.markerLat ?? pin.lat, longitude: pin.markerLng ?? pin.lng }}
       title={pin.title}
       tracksViewChanges={tracksViewChanges}
       onPress={onPinPress}
@@ -145,6 +146,7 @@ export default function MapScreen() {
 
   const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<any>(null);
+  const [selectedPinsAtLocation, setSelectedPinsAtLocation] = useState<any[]>([]);
   const [viewPinTrigger, setViewPinTrigger] = useState(0);
 
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
@@ -232,11 +234,27 @@ export default function MapScreen() {
 
     setIsSearching(true);
     try {
+      const lowered = searchQuery.toLowerCase();
+
+      const curatedMatches = CURATED_LANDMARKS
+        .filter((landmark) =>
+          landmark.name.toLowerCase().includes(lowered) ||
+          landmark.address.toLowerCase().includes(lowered)
+        )
+        .map((landmark) => ({
+          place_id: `curated-${landmark.key}`,
+          name: landmark.name,
+          display_name: landmark.address,
+          lat: String(landmark.lat),
+          lon: String(landmark.lng),
+          isCuratedLandmark: true,
+          landmarkKey: landmark.key,
+          distance: getDistanceFromLatLonInKm(currentRegion.latitude, currentRegion.longitude, landmark.lat, landmark.lng)
+        }));
+
       const primaryLang = Localization.getLocales()[0]?.languageCode ?? 'en';
       const acceptLangString = `${primaryLang},en;q=0.9`;
 
-      // FIX: Instead of using the map's zoom level (which breaks when zoomed in),
-      // we force a fixed ~50km (30 mile) search radius around your exact location.
       const searchRadius = 0.5; // roughly 50km in degrees
       const lon1 = currentRegion.longitude - searchRadius;
       const lat1 = currentRegion.latitude + searchRadius;
@@ -244,7 +262,6 @@ export default function MapScreen() {
       const lat2 = currentRegion.latitude - searchRadius;
       const viewbox = `${lon1},${lat1},${lon2},${lat2}`;
 
-      // We use bounded=1 to strictly trap the search inside that 50km box.
       const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&addressdetails=1&limit=15&accept-language=${acceptLangString}&viewbox=${viewbox}&bounded=1`, {
         headers: {
           'User-Agent': 'WaymarkApp/1.0',
@@ -252,20 +269,36 @@ export default function MapScreen() {
         }
       });
 
-      if (!response.ok) return;
+      if (!response.ok) {
+        setPredictions(curatedMatches.sort((a: any, b: any) => a.distance - b.distance).slice(0, 5));
+        return;
+      }
+
       const data = await response.json();
 
-      const sortedData = data.map((place: any) => {
-        const distance = getDistanceFromLatLonInKm(
+      const osmMatches = data.map((place: any) => ({
+        ...place,
+        distance: getDistanceFromLatLonInKm(
           currentRegion.latitude,
           currentRegion.longitude,
           parseFloat(place.lat),
           parseFloat(place.lon)
-        );
-        return { ...place, distance };
-      }).sort((a: any, b: any) => a.distance - b.distance).slice(0, 5);
+        )
+      }));
 
-      setPredictions(sortedData);
+      const combined = [...curatedMatches, ...osmMatches].sort((a: any, b: any) => a.distance - b.distance);
+
+      const deduped = combined.filter(
+        (item, index, arr) =>
+          index ===
+          arr.findIndex(
+            (other) =>
+              (other.name || other.display_name) ===
+              (item.name || item.display_name)
+          )
+      );
+
+      setPredictions(deduped.slice(0, 5));
     } catch (e) {
       console.log("Autocomplete error safely caught:", e);
     } finally {
@@ -298,8 +331,74 @@ export default function MapScreen() {
     }, 800);
   };
 
+  const pinsWithMarkerOffsets = useMemo(() => {
+    if (!pins?.length) return [];
+
+    const groups = new Map<string, any[]>();
+
+    for (const pin of pins) {
+      const groupKey =
+        pin?.isLandmarkMemory && pin?.landmarkKey
+          ? `landmark:${pin.landmarkKey}`
+          : `coords:${pin.lat}:${pin.lng}`;
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, []);
+      }
+      groups.get(groupKey)!.push(pin);
+    }
+
+    const OFFSET_RADIUS = 0.0005;
+
+    return pins.map((pin) => {
+      const groupKey =
+        pin?.isLandmarkMemory && pin?.landmarkKey
+          ? `landmark:${pin.landmarkKey}`
+          : `coords:${pin.lat}:${pin.lng}`;
+
+      const group = groups.get(groupKey) ?? [];
+
+      if (group.length <= 1) {
+        return {
+          ...pin,
+          markerLat: pin.lat,
+          markerLng: pin.lng,
+        };
+      }
+
+      const indexInGroup = group.findIndex((p) => String(p._id) === String(pin._id));
+      const angle = (2 * Math.PI * indexInGroup) / group.length;
+
+      return {
+        ...pin,
+        markerLat: pin.lat + OFFSET_RADIUS * Math.cos(angle),
+        markerLng: pin.lng + OFFSET_RADIUS * Math.sin(angle),
+      };
+    });
+  }, [pins]);
+
+  const getGroupedPinsForSelection = (pin: any) => {
+    if (!pins?.length) return [pin];
+
+    if (pin?.isLandmarkMemory && pin?.landmarkKey) {
+      return pins.filter(
+        (p: any) =>
+          p.isLandmarkMemory === true &&
+          p.landmarkKey === pin.landmarkKey
+      );
+    }
+
+    return pins.filter(
+      (p: any) =>
+        p.lat === pin.lat &&
+        p.lng === pin.lng
+    );
+  };
+
   const handleOpenPin = (pin: any) => {
+    const groupedPins = getGroupedPinsForSelection(pin);
     setSelectedPin(pin);
+    setSelectedPinsAtLocation(groupedPins);
     setIsViewSheetOpen(true);
     setViewPinTrigger(prev => prev + 1);
     setIsSheetOpen(false);
@@ -340,7 +439,7 @@ export default function MapScreen() {
           />
         )}
 
-        {pins?.map((pin: any) => (
+        {pinsWithMarkerOffsets?.map((pin: any) => (
           <PinMarker
             key={pin._id}
             pin={pin}
@@ -434,8 +533,10 @@ export default function MapScreen() {
         onClose={() => {
           setIsViewSheetOpen(false);
           setSelectedPin(null);
+          setSelectedPinsAtLocation([]);
         }}
         pin={selectedPin}
+        pins={selectedPinsAtLocation}
         minimizeTrigger={minimizeTrigger}
         openTrigger={viewPinTrigger}
       />

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { compressPinImage } from '@/hooks/image-compressor';
+import { CURATED_LANDMARKS } from "@/lib/landmarks";
 
 interface AddPinSheetProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ interface AddPinSheetProps {
   initialAddress?: string;
   minimizeTrigger?: number;
   openTrigger?: number;
-  onLocationChange?: (lat: number, lng: number) => void; // <-- New Prop added
+  onLocationChange?: (lat: number, lng: number) => void;
 }
 
 interface PinImage { storageId: string; uri: string; caption: string; }
@@ -51,6 +52,45 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const [address, setAddress] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
+
+  // Landmark state
+  const [showLandmarkModal, setShowLandmarkModal] = useState(false);
+  const [landmarkSearch, setLandmarkSearch] = useState("");
+  const [selectedLandmark, setSelectedLandmark] = useState<any | null>(null);
+
+  const filteredLandmarks = CURATED_LANDMARKS.filter((landmark) =>
+    landmark.name.toLowerCase().includes(landmarkSearch.toLowerCase()) ||
+    landmark.address.toLowerCase().includes(landmarkSearch.toLowerCase())
+  );
+
+  const getNearbyCuratedBeach = (latitude: number, longitude: number) => {
+    const BEACH_DISTANCE_THRESHOLD = 0.02; // roughly ~1 km, good starting point
+
+    const beachLandmarks = CURATED_LANDMARKS.filter((landmark) =>
+      landmark.collectionKeys?.includes("ca_beaches")
+    );
+
+    let closestBeach: any | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const beach of beachLandmarks) {
+      const distance = Math.sqrt(
+        Math.pow(latitude - beach.lat, 2) + Math.pow(longitude - beach.lng, 2)
+      );
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestBeach = beach;
+      }
+    }
+
+    if (closestBeach && closestDistance <= BEACH_DISTANCE_THRESHOLD) {
+      return closestBeach;
+    }
+
+    return null;
+  };
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [selectedImages, setSelectedImages] = useState<PinImage[]>([]);
@@ -120,8 +160,10 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       } else { handleGetLocation(); }
     } else {
       bottomSheetRef.current?.close();
-      setTitle(''); setDescription(''); setAddress(''); setSelectedTags([]);
+      Keyboard.dismiss();
+      setTitle(''); setDescription(''); setAddress(''); setSelectedTags('');
       setSelectedImages([]); setThumbnailStorageId(null); setActiveGalleryIndex(null);
+      setLat(null); setLng(null); setSelectedLandmark(null); setLandmarkSearch(""); setShowLandmarkModal(false);
     }
   }, [isOpen, initialLat, initialLng, initialTitle, initialAddress, openTrigger]);
 
@@ -192,7 +234,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       const loc = await Location.getCurrentPositionAsync({});
       setLat(loc.coords.latitude);
       setLng(loc.coords.longitude);
-      if (onLocationChange) onLocationChange(loc.coords.latitude, loc.coords.longitude); // <-- Notify index.tsx of coordinates
+      if (onLocationChange) onLocationChange(loc.coords.latitude, loc.coords.longitude);
       await fetchAddress(loc.coords.latitude, loc.coords.longitude);
     } catch (e) { console.log('Could not fetch location', e); }
   };
@@ -208,16 +250,73 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     } catch (err: any) { Alert.alert("Error", err?.message ?? "Failed to create tag"); }
   };
 
+  const handleSelectLandmark = (landmark: any) => {
+    setSelectedLandmark(landmark);
+    setTitle(landmark.name);
+    setAddress(landmark.address);
+
+    if (lat === null || lng === null) {
+      setLat(landmark.lat);
+      setLng(landmark.lng);
+    }
+
+    setShowLandmarkModal(false);
+    setLandmarkSearch("");
+  };
+
   const handleCreate = async () => {
-    if (!title.trim() || lat === null || lng === null) return Alert.alert("Title required", "Add a title to save this pin.");
+    if (!title.trim()) {
+      Alert.alert("Title required", "Add a title to save this pin.");
+      return;
+    }
+    if (lat === null || lng === null) return;
+
     setIsSubmitting(true);
     try {
+      const nearbyBeach = getNearbyCuratedBeach(lat, lng);
+
       const captionsDict: Record<string, string> = {};
       selectedImages.forEach(img => { if (img.caption.trim()) captionsDict[img.storageId] = img.caption.trim(); });
-      const pinId = await createPin({ title, description, address, lat, lng, category: "general", thumbnail: thumbnailStorageId || undefined, pictures: selectedImages.map(img => img.storageId), captions: captionsDict });
-      if (selectedTags.length > 0) await Promise.all(selectedTags.map(tag => addTagToPin({ pinId, tagId: tag._id })));
+
+      const newPinId = await createPin({
+        title,
+        description,
+        address,
+        lat,
+        lng,
+        category: selectedLandmark
+          ? selectedLandmark.collectionKeys?.includes("ca_beaches")
+            ? "beach"
+            : "landmark"
+          : nearbyBeach
+            ? "beach"
+            : "general",
+        thumbnail: thumbnailStorageId || undefined,
+        pictures: selectedImages.map((image) => image.storageId),
+        captions: captionsDict,
+        isLandmarkMemory: !!selectedLandmark,
+        landmarkKey: selectedLandmark?.key,
+        landmarkName: selectedLandmark?.name,
+        landmarkRegion: selectedLandmark?.region,
+        landmarkCollectionKeys: selectedLandmark?.collectionKeys ?? [],
+      });
+
+      if (selectedTags.length > 0) {
+        await Promise.all(
+          selectedTags.map(tag => addTagToPin({ pinId: newPinId, tagId: tag._id }))
+        );
+      }
+
+      setSelectedLandmark(null);
+      setLandmarkSearch("");
+      setShowLandmarkModal(false);
+
       onClose();
-    } catch (e: any) { console.error('Failed to create pin: ', e.message); } finally { setIsSubmitting(false); }
+    } catch (e: any) {
+      console.error("Failed to create pin: ", e.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const currentDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
@@ -252,6 +351,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
           <View style={styles.metaRow}>
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.metaButton} onPress={() => setShowLandmarkModal(true)}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Landmark +</Text></TouchableOpacity>
             <View style={styles.addressContainer}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text></View>
           </View>
 
@@ -269,6 +369,56 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
           </View>
         </View>
       </BottomSheetScrollView>
+
+      <Modal visible={showLandmarkModal} animationType="slide" transparent={true} onRequestClose={() => setShowLandmarkModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Choose Landmark</Text>
+              <TouchableOpacity onPress={() => setShowLandmarkModal(false)}>
+                <Text style={[styles.modalCloseText, { color: theme.text }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ padding: 16 }}>
+              <TextInput
+                value={landmarkSearch}
+                onChangeText={setLandmarkSearch}
+                placeholder="Search landmarks..."
+                placeholderTextColor="#666"
+                style={[
+                  styles.newTagInput,
+                  {
+                    backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#fff',
+                    color: theme.text,
+                    borderColor: colorScheme === 'dark' ? '#444' : '#ccc',
+                  },
+                ]}
+              />
+
+              <ScrollView style={{ maxHeight: 380 }}>
+                {filteredLandmarks.map((landmark) => (
+                  <TouchableOpacity
+                    key={landmark.key}
+                    onPress={() => handleSelectLandmark(landmark)}
+                    style={[
+                      styles.predictionItem,
+                      { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' },
+                    ]}
+                  >
+                    <Text style={[styles.predictionMainText, { color: theme.text }]}>
+                      {landmark.name}
+                    </Text>
+                    <Text style={[styles.predictionSubText, { color: colorScheme === 'dark' ? '#77767b' : '#9a9996' }]}>
+                      {landmark.address}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
         <View style={styles.modalOverlay}>
@@ -326,6 +476,7 @@ const styles = StyleSheet.create({
   contentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
   imageScroll: { flexGrow: 0, marginBottom: 20 },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  placeholderImageBox: { width: 100, height: 120, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10, position: 'relative' },
   previewImage: { width: '100%', height: '100%' },
   removeImageButton: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
@@ -368,5 +519,8 @@ const styles = StyleSheet.create({
   galleryContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   galleryMainImage: { width: '100%', height: '100%' },
   captionInputContainer: { position: 'absolute', width: '90%', alignSelf: 'center', backgroundColor: 'rgba(28, 28, 30, 0.85)', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)' },
-  captionInput: { color: '#ffffff', fontSize: 15, maxHeight: 100 }
+  captionInput: { color: '#ffffff', fontSize: 15, maxHeight: 100 },
+  predictionItem: { paddingVertical: 12, borderBottomWidth: 1 },
+  predictionMainText: { fontSize: 16, fontWeight: "600" },
+  predictionSubText: { fontSize: 12, marginTop: 2 }
 });

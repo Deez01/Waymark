@@ -15,15 +15,23 @@ import { compressPinImage } from '@/hooks/image-compressor';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-interface ViewEditPinSheetProps { isOpen: boolean; onClose: () => void; pin: any | null; minimizeTrigger?: number; openTrigger?: number; }
+interface ViewEditPinSheetProps {
+  isOpen: boolean;
+  onClose: () => void;
+  pin: any | null;
+  pins?: any[];
+  minimizeTrigger?: number;
+  openTrigger?: number;
+}
 interface NewPinImage { storageId: string; uri: string; caption: string; }
 
-export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
+export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
+  const [activePin, setActivePin] = useState<any | null>(null);
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
   const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
@@ -32,8 +40,8 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   const updatePin = useMutation(api.pins.updatePin);
   const generateUploadUrl = useMutation(api.pins.generateUploadUrl);
   const allTags = useQuery(api.pinTags.getAllTags);
-  const pinTags = useQuery(api.pinTags.getTagsForPin, pin ? { pinId: pin._id } : "skip");
-  const pinPictures = useQuery(api.pins.getPinPictures, pin ? { pinId: pin._id } : "skip");
+  const pinTags = useQuery(api.pinTags.getTagsForPin, activePin ? { pinId: activePin._id } : "skip");
+  const pinPictures = useQuery(api.pins.getPinPictures, activePin ? { pinId: activePin._id } : "skip");
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
   const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
 
@@ -61,7 +69,10 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   };
 
   useEffect(() => {
-    if (minimizeTrigger && minimizeTrigger > 0) snapTo(0);
+    if (minimizeTrigger && minimizeTrigger > 0) {
+      Keyboard.dismiss();
+      snapTo(0);
+    }
   }, [minimizeTrigger]);
 
   useEffect(() => {
@@ -71,9 +82,30 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   }, [sheetIndex, viewerIndex]);
 
   useEffect(() => {
-    if (isOpen && pin) { setTitle(pin.title || ''); setDescription(pin.description || ''); setNewImages([]); setThumbnailStorageId(null); setCaptionEdits({}); snapTo(1); }
-    else { bottomSheetRef.current?.close(); }
+    if (isOpen && pin) {
+      setActivePin(pin);
+      setTitle(pin.title || '');
+      setDescription(pin.description || '');
+      setNewImages([]);
+      setThumbnailStorageId(null);
+      setCaptionEdits({});
+      snapTo(1);
+    } else {
+      setActivePin(null);
+      bottomSheetRef.current?.close();
+      Keyboard.dismiss();
+    }
   }, [isOpen, pin, openTrigger]);
+
+  useEffect(() => {
+    if (activePin) {
+      setTitle(activePin.title || '');
+      setDescription(activePin.description || '');
+      setNewImages([]);
+      setThumbnailStorageId(null);
+      setCaptionEdits({});
+    }
+  }, [activePin]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -150,13 +182,13 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
   };
 
   const toggleTagSelection = async (tag: any) => {
-    if (!pin) return;
-    try { if (pinTags?.some((t: any) => t._id === tag._id)) await removeTagFromPin({ pinId: pin._id, tagId: tag._id }); else await addTagToPin({ pinId: pin._id, tagId: tag._id }); }
+    if (!activePin) return;
+    try { if (pinTags?.some((t: any) => t._id === tag._id)) await removeTagFromPin({ pinId: activePin._id, tagId: tag._id }); else await addTagToPin({ pinId: activePin._id, tagId: tag._id }); }
     catch (err: any) { console.log(err); }
   };
 
   const handleUpdate = async () => {
-    if (!pin) return;
+    if (!activePin) return;
     setIsSubmitting(true);
     try {
       const combinedPictures = [...(pinPictures?.map((p: any) => p.storageId) || []), ...newImages.map(img => img.storageId)];
@@ -165,12 +197,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
       Object.entries(captionEdits).forEach(([storageId, text]) => { if (text.trim()) finalCaptions[storageId] = text.trim(); else delete finalCaptions[storageId]; });
       newImages.forEach(img => { if (img.caption.trim()) finalCaptions[img.storageId] = img.caption.trim(); });
 
-      await updatePin({ pinId: pin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
+      await updatePin({ pinId: activePin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
       onClose();
     } catch (e: any) { console.error(e.message); } finally { setIsSubmitting(false); }
   };
 
-  if (!pin) return null;
+  if (!activePin) return null;
 
   const allViewerPictures = [...(pinPictures || []).map((p: any) => ({ storageId: p.storageId, url: p.url, caption: p.caption, isExisting: true })), ...newImages.map(img => ({ storageId: img.storageId, url: img.uri, caption: img.caption, isExisting: false }))];
   let currentActiveCaption = '';
@@ -179,7 +211,10 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
     if (activePic.isExisting) currentActiveCaption = captionEdits[activePic.storageId] !== undefined ? captionEdits[activePic.storageId] : (activePic.caption || '');
     else currentActiveCaption = activePic.caption;
   }
-  const displayDate = pin.createdAt ? new Date(pin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '';
+
+  const displayDate = activePin.createdAt
+    ? new Date(activePin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
+    : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 
   return (
     <BottomSheet ref={bottomSheetRef} index={-1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose} onChange={setSheetIndex} backgroundStyle={{ backgroundColor: theme.background }}
@@ -197,13 +232,54 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, minimizeTrigger
           <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>{isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}</TouchableOpacity>
         </GHScrollView>
         <View style={styles.formContainer}>
+          {pins.length > 1 ? (
+            <View style={styles.groupSelectorContainer}>
+              <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>
+                Memories at this location
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.groupSelectorRow}>
+                  {pins.map((groupPin: any, index: number) => {
+                    const isActive = activePin?._id === groupPin._id;
+                    return (
+                      <TouchableOpacity
+                        key={groupPin._id}
+                        onPress={() => setActivePin(groupPin)}
+                        style={[
+                          styles.groupSelectorChip,
+                          {
+                            backgroundColor: isActive
+                              ? theme.tint
+                              : colorScheme === "dark"
+                                ? "#333"
+                                : "#e5e7eb",
+                            borderColor: colorScheme === "dark" ? "#444" : "#ccc",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            color: isActive ? "#fff" : theme.text,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {groupPin.title || `Memory ${index + 1}`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          ) : null}
+
           <View style={styles.titleRow}>
             <TextInput style={[styles.titleInput, { color: theme.text }]} placeholder="Name" value={title} onChangeText={setTitle} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
             <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
           </View>
           <View style={styles.metaRow}>
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
-            <View style={styles.addressContainer}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{pin.address || "No address provided"}</Text></View>
+            <View style={styles.addressContainer}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{activePin.address || "No address provided"}</Text></View>
           </View>
           <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
             <TextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Notes..." multiline value={description} onChangeText={setDescription} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
@@ -278,5 +354,9 @@ const styles = StyleSheet.create({
   modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   modalTitle: { fontSize: 18, fontWeight: "600" },
   categoryTitle: { fontSize: 14, fontWeight: "600", marginBottom: 10 },
-  tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 }
+  tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  groupSelectorContainer: { marginBottom: 14 },
+  groupSelectorLabel: { fontSize: 13, fontWeight: "600", marginBottom: 8, opacity: 0.8 },
+  groupSelectorRow: { flexDirection: "row", gap: 8 },
+  groupSelectorChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1 }
 });
