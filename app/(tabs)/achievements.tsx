@@ -135,8 +135,8 @@ export default function AchievementsScreen() {
                 </View>
 
                 <View style={[styles.row, { marginTop: 10 }]}>
-                  <Stat label="Beach Pins" value={stats?.pinsByCategory?.beach ?? 0} />
-                  <Stat label="Landmark Pins" value={stats?.pinsByCategory?.landmark ?? 0} />
+                  <Stat label="Beach Pins" value={stats?.beachTotal ?? 0} />
+                  <Stat label="Landmark Pins" value={stats?.landmarkTotal ?? 0} />
                 </View>
 
                 {ENABLE_DEMO && (

@@ -40,6 +40,13 @@ export const createPin = mutation({
     // Stores text captions mapped to specific picture storage IDs.
     captions: v.optional(v.record(v.string(), v.string())),
     tags: v.optional(v.array(v.string())),
+
+    // Landmark memory fields
+    isLandmarkMemory: v.optional(v.boolean()),
+    landmarkKey: v.optional(v.string()),
+    landmarkName: v.optional(v.string()),
+    landmarkRegion: v.optional(v.string()),
+    landmarkCollectionKeys: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
@@ -62,6 +69,12 @@ export const createPin = mutation({
       pictures: args.pictures,
       captions: args.captions,
       tags: args.tags,
+
+      isLandmarkMemory: args.isLandmarkMemory,
+      landmarkKey: args.landmarkKey,
+      landmarkName: args.landmarkName,
+      landmarkRegion: args.landmarkRegion,
+      landmarkCollectionKeys: args.landmarkCollectionKeys,
     });
 
     // Check for any achievements related to pin creation.
@@ -193,3 +206,18 @@ export const updatePin = mutation({
   },
 });
 
+// gives a clean way to display/filter landmark memories later
+export const getLandmarkPins = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = assertAuthed(await getAuthUserId(ctx));
+    const ownerIdStr = userId.toString();
+
+    const pins = await ctx.db
+      .query("pins")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", ownerIdStr))
+      .collect();
+
+    return pins.filter((pin) => pin.isLandmarkMemory === true);
+  },
+});

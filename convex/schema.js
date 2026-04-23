@@ -36,6 +36,12 @@ export default defineSchema({
     // Stores individual photo captions using storageId as the key.
     captions: v.optional(v.record(v.string(), v.string())),
     tags: v.optional(v.array(v.string())),
+    // Landmark memory fields
+    isLandmarkMemory: v.optional(v.boolean()),
+    landmarkKey: v.optional(v.string()),
+    landmarkName: v.optional(v.string()),
+    landmarkRegion: v.optional(v.string()),
+    landmarkCollectionKeys: v.optional(v.array(v.string())),
   })
     .index("by_category", ["category"])
     .index("by_ownerId", ["ownerId"]),
