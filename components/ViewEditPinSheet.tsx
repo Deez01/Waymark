@@ -8,6 +8,7 @@ import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard'; // <-- Added Clipboard Import
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -134,7 +135,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     if (currentTotal >= 10) return;
     const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
     if (cameraPermission.status !== 'granted') return;
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1
+    });
     if (result.canceled || result.assets.length === 0) return;
 
     setIsUploadingImages(true);
@@ -153,7 +158,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     const currentTotal = (pinPictures?.length || 0) + newImages.length;
     if (currentTotal >= 10) return;
     const remaining = 10 - currentTotal;
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: remaining, quality: 1 });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+      quality: 1
+    });
     if (result.canceled || result.assets.length === 0) return;
 
     setIsUploadingImages(true);
@@ -191,15 +201,34 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     if (!activePin) return;
     setIsSubmitting(true);
     try {
-      const combinedPictures = [...(pinPictures?.map((p: any) => p.storageId) || []), ...newImages.map(img => img.storageId)];
+      const existingStorageIds = Array.isArray(pinPictures)
+        ? pinPictures.map((p: any) => p.storageId)
+        : (activePin.pictures || []);
+
+      const combinedPictures = [...existingStorageIds, ...newImages.map(img => img.storageId)];
+
       const finalCaptions: Record<string, string> = {};
-      pinPictures?.forEach((pic: any) => { if (pic.caption) finalCaptions[pic.storageId] = pic.caption; });
+      if (Array.isArray(pinPictures)) {
+        pinPictures.forEach((pic: any) => { if (pic.caption) finalCaptions[pic.storageId] = pic.caption; });
+      } else if (activePin.captions) {
+        Object.assign(finalCaptions, activePin.captions);
+      }
+
       Object.entries(captionEdits).forEach(([storageId, text]) => { if (text.trim()) finalCaptions[storageId] = text.trim(); else delete finalCaptions[storageId]; });
       newImages.forEach(img => { if (img.caption.trim()) finalCaptions[img.storageId] = img.caption.trim(); });
 
       await updatePin({ pinId: activePin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
       onClose();
     } catch (e: any) { console.error(e.message); } finally { setIsSubmitting(false); }
+  };
+
+  // <-- New Function Added -->
+  const handleCopyAddress = async () => {
+    const addressToCopy = activePin?.address || "No address provided";
+    if (addressToCopy !== "No address provided") {
+      await Clipboard.setStringAsync(addressToCopy);
+      Alert.alert("Copied", "Address copied to clipboard!");
+    }
   };
 
   if (!activePin) return null;
@@ -279,7 +308,14 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
           </View>
           <View style={styles.metaRow}>
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
-            <View style={styles.addressContainer}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{activePin.address || "No address provided"}</Text></View>
+
+            {/* <-- Changed to TouchableOpacity and added onPress --> */}
+            <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
+              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>
+                {activePin.address || "No address provided"}
+              </Text>
+            </TouchableOpacity>
           </View>
           <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
             <TextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Notes..." multiline value={description} onChangeText={setDescription} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
@@ -336,6 +372,9 @@ const styles = StyleSheet.create({
   metaText: { marginLeft: 4, fontSize: 14 },
   addressContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginLeft: 15 },
   addressText: { marginLeft: 4, fontSize: 14, textAlign: 'right', flexShrink: 1 },
+  selectedTagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 },
+  selectedTagPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  selectedTagText: { color: '#fff', fontSize: 12, fontWeight: '500' },
   notesAndSaveRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 },
   notesAndSaveRowExpanded: { flex: 1 },
   notesInput: { flex: 1, fontSize: 14, paddingVertical: 8, marginRight: 10, maxHeight: 60 },

@@ -7,6 +7,7 @@ import { useMutation, useQuery } from 'convex/react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as Clipboard from 'expo-clipboard'; // <-- Added Clipboard Import
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -162,7 +163,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       bottomSheetRef.current?.close();
       Keyboard.dismiss();
       setTitle(''); setDescription(''); setAddress('');
-      setSelectedTags([]); // FIXED: Changed from '' to []
+      setSelectedTags([]);
       setSelectedImages([]); setThumbnailStorageId(null); setActiveGalleryIndex(null);
       setLat(null); setLng(null); setSelectedLandmark(null); setLandmarkSearch(""); setShowLandmarkModal(false);
     }
@@ -181,7 +182,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     if (selectedImages.length >= 10) return Alert.alert('Limit reached', 'You can add up to 10 photos per pin.');
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (permission.status !== 'granted') return Alert.alert('Permission required', 'Camera permission is required.');
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 1 });
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 1
+    });
     if (result.canceled || result.assets.length === 0) return;
 
     setIsUploadingImages(true);
@@ -199,7 +205,13 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== 'granted') return Alert.alert('Permission required', 'Photo library permission is required.');
     const remaining = 10 - selectedImages.length;
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: remaining, quality: 1 });
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
+      quality: 1
+    });
     if (result.canceled || result.assets.length === 0) return;
 
     setIsUploadingImages(true);
@@ -256,9 +268,10 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     setTitle(landmark.name);
     setAddress(landmark.address);
 
-    if (lat === null || lng === null) {
-      setLat(landmark.lat);
-      setLng(landmark.lng);
+    setLat(landmark.lat);
+    setLng(landmark.lng);
+    if (onLocationChange) {
+      onLocationChange(landmark.lat, landmark.lng);
     }
 
     setShowLandmarkModal(false);
@@ -320,6 +333,15 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
+  // <-- New Function Added -->
+  const handleCopyAddress = async () => {
+    const addressToCopy = address || "Locating...";
+    if (addressToCopy !== "Locating...") {
+      await Clipboard.setStringAsync(addressToCopy);
+      Alert.alert("Copied", "Address copied to clipboard!");
+    }
+  };
+
   const currentDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 
   return (
@@ -353,7 +375,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
           <View style={styles.metaRow}>
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowLandmarkModal(true)}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Landmark +</Text></TouchableOpacity>
-            <View style={styles.addressContainer}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text></View>
+
+            {/* <-- Changed to TouchableOpacity and added onPress --> */}
+            <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
+              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text>
+            </TouchableOpacity>
           </View>
 
           {selectedTags.length > 0 && (
@@ -477,7 +504,6 @@ const styles = StyleSheet.create({
   contentContainer: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
   imageScroll: { flexGrow: 0, marginBottom: 20 },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  placeholderImageBox: { width: 100, height: 120, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10, position: 'relative' },
   previewImage: { width: '100%', height: '100%' },
   removeImageButton: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
