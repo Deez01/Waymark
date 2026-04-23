@@ -161,7 +161,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     } else {
       bottomSheetRef.current?.close();
       Keyboard.dismiss();
-      setTitle(''); setDescription(''); setAddress(''); setSelectedTags('');
+      setTitle(''); setDescription(''); setAddress('');
+      setSelectedTags([]); // FIXED: Changed from '' to []
       setSelectedImages([]); setThumbnailStorageId(null); setActiveGalleryIndex(null);
       setLat(null); setLng(null); setSelectedLandmark(null); setLandmarkSearch(""); setShowLandmarkModal(false);
     }
