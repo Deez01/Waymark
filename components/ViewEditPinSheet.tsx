@@ -1,7 +1,7 @@
 // components/ViewEditPinSheet.tsx
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert, FlatList } from 'react-native';
-import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert, FlatList } from 'react-native';
+import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
@@ -33,12 +33,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const [activePin, setActivePin] = useState<any | null>(null);
-  const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
-  const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
+  const targetPin = activePin || pin;
+
+  // Uses identical snap points to AddPinSheet for consistency
+  const snapPoints = useMemo(() => ['4%', '45%', '95%'], []);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [isSheetInputFocused, setIsSheetInputFocused] = useState(false);
-
-  const targetPin = activePin || pin;
 
   const updatePin = useMutation(api.pins.updatePin);
   const generateUploadUrl = useMutation(api.pins.generateUploadUrl);
@@ -59,20 +59,22 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
 
-  const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => { const category = tag.category || "Other"; if (!acc[category]) acc[category] = []; acc[category].push(tag); return acc; }, {}) : {};
+  const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
+    const category = tag.category || "Other";
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(tag);
+    return acc;
+  }, {}) : {};
 
   const programmaticSnapRef = useRef(false);
-  const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapTo = (index: number) => {
     programmaticSnapRef.current = true;
     bottomSheetRef.current?.snapToIndex(index);
-    if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
-    programmaticTimeoutRef.current = setTimeout(() => { programmaticSnapRef.current = false; }, 500);
+    setTimeout(() => { programmaticSnapRef.current = false; }, 500);
   };
 
   useEffect(() => {
-    // <-- FIX: Ensure we only listen to map dragging if we are actually OPEN
     if (minimizeTrigger && minimizeTrigger > 0 && isOpen) {
       Keyboard.dismiss();
       snapTo(0);
@@ -81,7 +83,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
 
   useEffect(() => {
     const backAction = () => {
-      if (!isOpen) return false; // <-- FIX: Only intercept back button if open
+      if (!isOpen) return false;
       if (viewerIndex !== null) { setViewerIndex(null); return true; }
       if (sheetIndex > 0) { snapTo(0); return true; }
       return false;
@@ -98,6 +100,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       setNewImages([]);
       setThumbnailStorageId(null);
       setCaptionEdits({});
+      // Ensure UI is ready before raising sheet
       setTimeout(() => snapTo(1), 50);
     } else {
       bottomSheetRef.current?.close();
@@ -114,20 +117,6 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       setCaptionEdits({});
     }
   }, [activePin]);
-
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
-      if (!isOpen || !isSheetInputFocused || viewerIndex !== null) return;
-      let kbHeight = e.endCoordinates.height;
-      if (Platform.OS === 'android' && kbHeight < 100) kbHeight = screenHeight - Dimensions.get('window').height;
-      setDynamicSnap(kbHeight + 320);
-    });
-    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
-      if (!isOpen || !isSheetInputFocused || viewerIndex !== null) return;
-      snapTo(1);
-    });
-    return () => { keyboardDidShowListener.remove(); keyboardDidHideListener.remove(); };
-  }, [isOpen, viewerIndex, isSheetInputFocused]);
 
   const uploadImageUri = async (uri: string, mimeType?: string | null) => {
     const uploadUrl = await generateUploadUrl();
@@ -187,6 +176,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   };
 
   const handleRemoveNewImage = (storageId: string) => setNewImages((prev) => prev.filter((image) => image.storageId !== storageId));
+
   const handleUpdateCaption = (text: string) => {
     if (viewerIndex === null) return;
     const existingLen = pinPictures?.length || 0;
@@ -200,8 +190,13 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
 
   const toggleTagSelection = async (tag: any) => {
     if (!targetPin) return;
-    try { if (pinTags?.some((t: any) => t._id === tag._id)) await removeTagFromPin({ pinId: targetPin._id, tagId: tag._id }); else await addTagToPin({ pinId: targetPin._id, tagId: tag._id }); }
-    catch (err: any) { console.log(err); }
+    try {
+      if (pinTags?.some((t: any) => t._id === tag._id)) {
+        await removeTagFromPin({ pinId: targetPin._id, tagId: tag._id });
+      } else {
+        await addTagToPin({ pinId: targetPin._id, tagId: tag._id });
+      }
+    } catch (err: any) { console.log(err); }
   };
 
   const handleUpdate = async () => {
@@ -211,10 +206,9 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       const existingStorageIds = Array.isArray(pinPictures)
         ? pinPictures.map((p: any) => p.storageId)
         : (targetPin.pictures || []);
-
       const combinedPictures = [...existingStorageIds, ...newImages.map(img => img.storageId)];
-
       const finalCaptions: Record<string, string> = {};
+
       if (Array.isArray(pinPictures)) {
         pinPictures.forEach((pic: any) => { if (pic.caption) finalCaptions[pic.storageId] = pic.caption; });
       } else if (targetPin.captions) {
@@ -225,7 +219,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       newImages.forEach(img => { if (img.caption.trim()) finalCaptions[img.storageId] = img.caption.trim(); });
 
       await updatePin({ pinId: targetPin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
-      onClose();
+
+      setNewImages([]);
+      setCaptionEdits({});
+      setThumbnailStorageId(null);
+      Keyboard.dismiss();
     } catch (e: any) { console.error(e.message); } finally { setIsSubmitting(false); }
   };
 
@@ -250,7 +248,16 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 
   return (
-    <BottomSheet ref={bottomSheetRef} index={-1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose} onChange={setSheetIndex} backgroundStyle={{ backgroundColor: theme.background }}
+    <BottomSheet
+      ref={bottomSheetRef}
+      index={-1}
+      snapPoints={snapPoints}
+      enablePanDownToClose
+      onClose={onClose}
+      onChange={setSheetIndex}
+      backgroundStyle={{ backgroundColor: theme.background }}
+      keyboardBehavior="extend"
+      keyboardBlurBehavior="restore"
       onAnimate={(fromIndex, toIndex) => {
         if (programmaticSnapRef.current) return;
         if (fromIndex === -1 || toIndex === -1) return;
@@ -266,66 +273,76 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       {targetPin ? (
         <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
           <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-            {pinPictures && pinPictures.map((picture: any, index: number) => (<TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>{picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}</TouchableOpacity>))}
-            {newImages.map((image, index) => (<TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}><Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" /><TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}><Text style={styles.removeImageText}>x</Text></TouchableOpacity></TouchableOpacity>))}
-            <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>{isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}</TouchableOpacity>
+            {pinPictures && pinPictures.map((picture: any, index: number) => (
+              <TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>
+                {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
+              </TouchableOpacity>
+            ))}
+            {newImages.map((image, index) => (
+              <TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}>
+                <Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" />
+                <TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}>
+                  <Text style={styles.removeImageText}>x</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>
+              {isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}
+            </TouchableOpacity>
           </GHScrollView>
+
           <View style={styles.formContainer}>
-            {pins.length > 1 ? (
+            {pins.length > 1 && (
               <View style={styles.groupSelectorContainer}>
-                <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>
-                  Memories at this location
-                </Text>
+                <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>Memories at this location</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.groupSelectorRow}>
                     {pins.map((groupPin: any, index: number) => {
                       const isActive = targetPin?._id === groupPin._id;
                       return (
-                        <TouchableOpacity
-                          key={groupPin._id}
-                          onPress={() => setActivePin(groupPin)}
-                          style={[
-                            styles.groupSelectorChip,
-                            {
-                              backgroundColor: isActive
-                                ? theme.tint
-                                : colorScheme === "dark"
-                                  ? "#333"
-                                  : "#e5e7eb",
-                              borderColor: colorScheme === "dark" ? "#444" : "#ccc",
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color: isActive ? "#fff" : theme.text,
-                              fontWeight: "600",
-                            }}
-                          >
-                            {groupPin.title || `Memory ${index + 1}`}
-                          </Text>
+                        <TouchableOpacity key={groupPin._id} onPress={() => setActivePin(groupPin)} style={[styles.groupSelectorChip, { backgroundColor: isActive ? theme.tint : (colorScheme === "dark" ? "#333" : "#e5e7eb"), borderColor: colorScheme === "dark" ? "#444" : "#ccc" }]}>
+                          <Text style={{ color: isActive ? "#fff" : theme.text, fontWeight: "600" }}>{groupPin.title || `Memory ${index + 1}`}</Text>
                         </TouchableOpacity>
                       );
                     })}
                   </View>
                 </ScrollView>
               </View>
-            ) : null}
+            )}
 
             <View style={styles.titleRow}>
-              <TextInput style={[styles.titleInput, { color: theme.text }]} placeholder="Name" value={title} onChangeText={setTitle} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
+              <BottomSheetTextInput style={[styles.titleInput, { color: theme.text }]} placeholder="Name" value={title} onChangeText={setTitle} onFocus={() => setIsSheetInputFocused(true)} onBlur={() => setIsSheetInputFocused(false)} />
               <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
             </View>
             <View style={styles.metaRow}>
-              <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}>
+                <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+                <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
                 <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
                 <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{targetPin.address || "No address provided"}</Text>
               </TouchableOpacity>
             </View>
             <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
-              <TextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Notes..." multiline value={description} onChangeText={setDescription} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
-              <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting || isUploadingImages}>{isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}</TouchableOpacity>
+              <BottomSheetTextInput
+                style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]}
+                placeholder="Add Notes..."
+                placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
+                multiline
+                value={description}
+                onChangeText={setDescription}
+                onFocus={() => {
+                  setIsSheetInputFocused(true);
+                  snapTo(2);
+                }}
+                onBlur={() => setIsSheetInputFocused(false)}
+                blurOnSubmit={true}
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
+              <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting || isUploadingImages}>
+                {isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}
+              </TouchableOpacity>
             </View>
           </View>
         </BottomSheetScrollView>
@@ -333,14 +350,45 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
         <View style={{ flex: 1 }} />
       )}
 
+      {/* GALLERY VIEWER MODAL */}
       <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => setViewerIndex(null)}>
         <View style={styles.galleryOverlay}>
-          <TouchableOpacity style={[styles.fullscreenCloseButton, { top: Platform.OS === 'ios' ? 50 : 30 }]} onPress={() => setViewerIndex(null)}><Text style={styles.fullscreenCloseText}>✕</Text></TouchableOpacity>
-          <FlatList data={allViewerPictures} keyExtractor={(item) => item.storageId} horizontal pagingEnabled initialScrollIndex={viewerIndex ?? 0} getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })} onMomentumScrollEnd={(e) => setViewerIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))} renderItem={({ item }) => (<View style={styles.fullscreenImageWrapper}>{item.url ? <Image source={{ uri: item.url }} style={styles.fullscreenImage} contentFit="contain" /> : null}</View>)} />
-          {viewerIndex !== null && (<View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}><TextInput style={styles.captionInput} placeholder="Add a caption..." placeholderTextColor="#a1a1aa" value={currentActiveCaption} onChangeText={handleUpdateCaption} multiline maxLength={150} /></View>)}
+          <TouchableOpacity style={[styles.fullscreenCloseButton, { top: Platform.OS === 'ios' ? 50 : 30 }]} onPress={() => setViewerIndex(null)}>
+            <Text style={styles.fullscreenCloseText}>✕</Text>
+          </TouchableOpacity>
+          <FlatList
+            data={allViewerPictures}
+            keyExtractor={(item) => item.storageId}
+            horizontal
+            pagingEnabled
+            initialScrollIndex={viewerIndex ?? 0}
+            getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })}
+            onMomentumScrollEnd={(e) => setViewerIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))}
+            renderItem={({ item }) => (
+              <View style={styles.fullscreenImageWrapper}>
+                {item.url ? <Image source={{ uri: item.url }} style={styles.fullscreenImage} contentFit="contain" /> : null}
+              </View>
+            )}
+          />
+          {viewerIndex !== null && (
+            <View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}>
+              <BottomSheetTextInput
+                style={styles.captionInput}
+                placeholder="Add a caption..."
+                placeholderTextColor="#a1a1aa"
+                value={currentActiveCaption}
+                onChangeText={handleUpdateCaption}
+                multiline
+                maxLength={150}
+                blurOnSubmit={true}
+                onSubmitEditing={() => Keyboard.dismiss()}
+              />
+            </View>
+          )}
         </View>
       </Modal>
 
+      {/* TAG MANAGEMENT MODAL */}
       <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
@@ -350,7 +398,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
                 <View key={category} style={{ marginBottom: 20 }}>
                   <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                    {tags.map((tag: any) => (<TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: pinTags?.some((t: any) => t._id === tag._id) ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb") }]}><Text style={{ color: pinTags?.some((t: any) => t._id === tag._id) ? "#fff" : theme.text }}>{tag.name}</Text></TouchableOpacity>))}
+                    {tags.map((tag: any) => (
+                      <TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: pinTags?.some((t: any) => t._id === tag._id) ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb") }]}>
+                        <Text style={{ color: pinTags?.some((t: any) => t._id === tag._id) ? "#fff" : theme.text }}>{tag.name}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
               ))}
