@@ -1,14 +1,19 @@
 // components/ViewEditPinSheet.tsx
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { api } from '@/convex/_generated/api';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, Alert, FlatList } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useMutation, useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
+import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { compressPinImage } from '@/hooks/image-compressor';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface ViewEditPinSheetProps {
   isOpen: boolean;
@@ -18,61 +23,49 @@ interface ViewEditPinSheetProps {
   minimizeTrigger?: number;
   openTrigger?: number;
 }
+interface NewPinImage { storageId: string; uri: string; caption: string; }
 
-export default function ViewEditPinSheet({
-  isOpen,
-  onClose,
-  pin,
-  pins = [],
-  minimizeTrigger,
-  openTrigger,
-}: ViewEditPinSheetProps) {
+export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const [activePin, setActivePin] = useState<any | null>(null);
   const [dynamicSnap, setDynamicSnap] = useState(Dimensions.get('window').height * 0.7);
   const snapPoints = useMemo(() => ['4%', '45%', dynamicSnap], [dynamicSnap]);
   const [sheetIndex, setSheetIndex] = useState(0);
+  const [isSheetInputFocused, setIsSheetInputFocused] = useState(false);
 
-  // --- Convex Queries & Mutations ---
   const updatePin = useMutation(api.pins.updatePin);
+  const generateUploadUrl = useMutation(api.pins.generateUploadUrl);
   const allTags = useQuery(api.pinTags.getAllTags);
   const pinTags = useQuery(api.pinTags.getTagsForPin, activePin ? { pinId: activePin._id } : "skip");
   const pinPictures = useQuery(api.pins.getPinPictures, activePin ? { pinId: activePin._id } : "skip");
-  const createTag = useMutation(api.pinTags.createTag);
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
   const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
 
-  // --- State ---
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showTagModal, setShowTagModal] = useState(false);
-  const [newTagName, setNewTagName] = useState("");
-  const [selectedColor, setSelectedColor] = useState("#3b82f6");
+  const [newImages, setNewImages] = useState<NewPinImage[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [thumbnailStorageId, setThumbnailStorageId] = useState<string | null>(null);
 
-  // Organize tags by category for the modal
-  const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
-    const category = tag.category || "Other";
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(tag);
-    return acc;
-  }, {}) : {};
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
 
-  // --- Smooth Snapping Logic ---
+  const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => { const category = tag.category || "Other"; if (!acc[category]) acc[category] = []; acc[category].push(tag); return acc; }, {}) : {};
+
   const programmaticSnapRef = useRef(false);
   const programmaticTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapTo = (index: number) => {
     programmaticSnapRef.current = true;
     bottomSheetRef.current?.snapToIndex(index);
-
     if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
-    programmaticTimeoutRef.current = setTimeout(() => {
-      programmaticSnapRef.current = false;
-    }, 100);
+    programmaticTimeoutRef.current = setTimeout(() => { programmaticSnapRef.current = false; }, 100);
   };
 
   useEffect(() => {
@@ -83,22 +76,19 @@ export default function ViewEditPinSheet({
   }, [minimizeTrigger]);
 
   useEffect(() => {
-    const backAction = () => {
-      if (sheetIndex > 0) {
-        snapTo(0);
-        return true;
-      }
-      return false;
-    };
+    const backAction = () => { if (viewerIndex !== null) { setViewerIndex(null); return true; } if (sheetIndex > 0) { snapTo(0); return true; } return false; };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [sheetIndex]);
+  }, [sheetIndex, viewerIndex]);
 
   useEffect(() => {
     if (isOpen && pin) {
       setActivePin(pin);
       setTitle(pin.title || '');
-      setDescription(pin.caption || pin.description || '');
+      setDescription(pin.description || '');
+      setNewImages([]);
+      setThumbnailStorageId(null);
+      setCaptionEdits({});
       snapTo(1);
     } else {
       setActivePin(null);
@@ -110,146 +100,143 @@ export default function ViewEditPinSheet({
   useEffect(() => {
     if (activePin) {
       setTitle(activePin.title || '');
-      setDescription(activePin.caption || activePin.description || '');
+      setDescription(activePin.description || '');
+      setNewImages([]);
+      setThumbnailStorageId(null);
+      setCaptionEdits({});
     }
   }, [activePin]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
-      if (!isOpen) return;
-
+      if (!isOpen || !isSheetInputFocused || viewerIndex !== null) return;
       let kbHeight = e.endCoordinates.height;
-      if (Platform.OS === 'android' && kbHeight < 100) {
-        const screenHeight = Dimensions.get('screen').height;
-        const windowHeight = Dimensions.get('window').height;
-        kbHeight = screenHeight - windowHeight;
-      }
+      if (Platform.OS === 'android' && kbHeight < 100) kbHeight = screenHeight - Dimensions.get('window').height;
       setDynamicSnap(kbHeight + 320);
-      setTimeout(() => snapTo(2), 10);
     });
-
     const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
-      if (!isOpen) return;
+      if (!isOpen || !isSheetInputFocused || viewerIndex !== null) return;
       snapTo(1);
     });
+    return () => { keyboardDidShowListener.remove(); keyboardDidHideListener.remove(); };
+  }, [isOpen, viewerIndex, isSheetInputFocused]);
 
-    return () => {
-      keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
-    };
-  }, [isOpen]);
+  const uploadImageUri = async (uri: string, mimeType?: string | null) => {
+    const uploadUrl = await generateUploadUrl();
+    const response = await fetch(uri);
+    const uploadResult = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': mimeType || 'image/jpeg' }, body: await response.blob() });
+    const { storageId } = await uploadResult.json();
+    return storageId as string;
+  };
 
-  // --- Tag Logic ---
-  const toggleTagSelection = async (tag: any) => {
-    if (!pin) return;
-    const isSelected = pinTags?.some((t: any) => t._id === tag._id);
+  const handleTakePhoto = async () => {
+    const currentTotal = (pinPictures?.length || 0) + newImages.length;
+    if (currentTotal >= 10) return;
+    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+    if (cameraPermission.status !== 'granted') return;
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+    if (result.canceled || result.assets.length === 0) return;
+
+    setIsUploadingImages(true);
     try {
-      if (isSelected) {
-        await removeTagFromPin({ pinId: pin._id, tagId: tag._id });
-      } else {
-        await addTagToPin({ pinId: pin._id, tagId: tag._id });
+      const asset = result.assets[0];
+      const isFirstImage = (pinPictures?.length || 0) === 0 && newImages.length === 0;
+      const processed = await compressPinImage(asset.uri, isFirstImage);
+      const storageId = await uploadImageUri(processed.fullUri, 'image/jpeg');
+      if (processed.thumbnailUri) { const thumbId = await uploadImageUri(processed.thumbnailUri, 'image/jpeg'); setThumbnailStorageId(thumbId); }
+      setNewImages((prev) => [...prev, { storageId, uri: processed.fullUri, caption: '' }]);
+    } catch (error: any) { Alert.alert('Upload failed', error?.message || 'Could not upload photo.'); }
+    finally { setIsUploadingImages(false); }
+  };
+
+  const handlePickFromLibrary = async () => {
+    const currentTotal = (pinPictures?.length || 0) + newImages.length;
+    if (currentTotal >= 10) return;
+    const remaining = 10 - currentTotal;
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: remaining, quality: 1 });
+    if (result.canceled || result.assets.length === 0) return;
+
+    setIsUploadingImages(true);
+    try {
+      let isFirstImage = (pinPictures?.length || 0) === 0 && newImages.length === 0;
+      for (const asset of result.assets.slice(0, remaining)) {
+        const processed = await compressPinImage(asset.uri, isFirstImage);
+        const storageId = await uploadImageUri(processed.fullUri, 'image/jpeg');
+        if (processed.thumbnailUri) { const thumbId = await uploadImageUri(processed.thumbnailUri, 'image/jpeg'); setThumbnailStorageId(thumbId); isFirstImage = false; }
+        setNewImages((prev) => [...prev, { storageId, uri: processed.fullUri, caption: '' }]);
       }
-    } catch (err: any) {
-      Alert.alert("Error", err?.message ?? "Failed to toggle tag");
+    } catch (error: any) { Alert.alert('Upload failed', error?.message || 'Could not upload selected images.'); }
+    finally { setIsUploadingImages(false); }
+  };
+
+  const handleRemoveNewImage = (storageId: string) => setNewImages((prev) => prev.filter((image) => image.storageId !== storageId));
+  const handleUpdateCaption = (text: string) => {
+    if (viewerIndex === null) return;
+    const existingLen = pinPictures?.length || 0;
+    if (viewerIndex < existingLen) {
+      if (!pinPictures) return;
+      setCaptionEdits((prev) => ({ ...prev, [pinPictures[viewerIndex].storageId]: text }));
+    } else {
+      const updatedImages = [...newImages]; updatedImages[viewerIndex - existingLen].caption = text; setNewImages(updatedImages);
     }
   };
 
-  const handleCreateTag = async () => {
-    if (!newTagName.trim()) {
-      Alert.alert("Error", "Tag name cannot be empty");
-      return;
-    }
-    try {
-      const newTagId = await createTag({ name: newTagName, color: selectedColor });
-      if (pin) {
-        await addTagToPin({ pinId: pin._id, tagId: newTagId });
-      }
-      setNewTagName("");
-      setSelectedColor("#3b82f6");
-    } catch (err: any) {
-      Alert.alert("Error", err?.message ?? "Failed to create tag");
-    }
+  const toggleTagSelection = async (tag: any) => {
+    if (!activePin) return;
+    try { if (pinTags?.some((t: any) => t._id === tag._id)) await removeTagFromPin({ pinId: activePin._id, tagId: tag._id }); else await addTagToPin({ pinId: activePin._id, tagId: tag._id }); }
+    catch (err: any) { console.log(err); }
   };
 
   const handleUpdate = async () => {
     if (!activePin) return;
     setIsSubmitting(true);
     try {
-      await updatePin({
-        pinId: activePin._id,
-        title,
-        description,
-        caption: description
-      });
+      const combinedPictures = [...(pinPictures?.map((p: any) => p.storageId) || []), ...newImages.map(img => img.storageId)];
+      const finalCaptions: Record<string, string> = {};
+      pinPictures?.forEach((pic: any) => { if (pic.caption) finalCaptions[pic.storageId] = pic.caption; });
+      Object.entries(captionEdits).forEach(([storageId, text]) => { if (text.trim()) finalCaptions[storageId] = text.trim(); else delete finalCaptions[storageId]; });
+      newImages.forEach(img => { if (img.caption.trim()) finalCaptions[img.storageId] = img.caption.trim(); });
+
+      await updatePin({ pinId: activePin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
       onClose();
-    } catch (e: any) {
-      console.error('Failed to update pin: ', e.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (e: any) { console.error(e.message); } finally { setIsSubmitting(false); }
   };
 
   if (!activePin) return null;
 
-  // Format the date the pin was created (or fallback to today)
+  const allViewerPictures = [...(pinPictures || []).map((p: any) => ({ storageId: p.storageId, url: p.url, caption: p.caption, isExisting: true })), ...newImages.map(img => ({ storageId: img.storageId, url: img.uri, caption: img.caption, isExisting: false }))];
+  let currentActiveCaption = '';
+  if (viewerIndex !== null && allViewerPictures[viewerIndex]) {
+    const activePic = allViewerPictures[viewerIndex];
+    if (activePic.isExisting) currentActiveCaption = captionEdits[activePic.storageId] !== undefined ? captionEdits[activePic.storageId] : (activePic.caption || '');
+    else currentActiveCaption = activePic.caption;
+  }
+
   const displayDate = activePin.createdAt
-  ? new Date(activePin.createdAt).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: '2-digit',
-    })
-  : new Date().toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: '2-digit',
-    });
+    ? new Date(activePin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
+    : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      onClose={onClose}
-      onChange={setSheetIndex}
-      onAnimate={(fromIndex, toIndex) => {
-        if (programmaticSnapRef.current) return;
-        if (toIndex - fromIndex > 1) {
-          snapTo(fromIndex + 1);
-        }
-        else if (fromIndex - toIndex > 1) {
-          snapTo(fromIndex - 1);
-        }
-      }}
-      backgroundStyle={[styles.sheetBackground, { backgroundColor: theme.background }]}
-      handleIndicatorStyle={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]}
+    <BottomSheet ref={bottomSheetRef} index={-1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose} onChange={setSheetIndex} backgroundStyle={{ backgroundColor: theme.background }}
+      onAnimate={(from, to) => { if (programmaticSnapRef.current) return; if (to - from > 1) snapTo(from + 1); else if (from - to > 1) snapTo(from - 1); }}
+      handleComponent={() => (
+        <TouchableOpacity activeOpacity={1} onPress={() => { if (sheetIndex === 0) snapTo(1); }} style={styles.handleContainer}>
+          <View style={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]} />
+        </TouchableOpacity>
+      )}
     >
-      <BottomSheetScrollView style={styles.scrollWrapper} contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}>
-            <IconSymbol name="add" size={48} color={theme.text} />
-          </TouchableOpacity>
-          {pinPictures && pinPictures.length > 0 ? (
-            pinPictures.map((picture: { storageId: string; url: string | null }) => (
-              <View key={picture.storageId} style={styles.imagePreviewContainer}>
-                {picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}
-              </View>
-            ))
-          ) : (
-            <View style={[styles.placeholderImageBox, { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fafafa', borderColor: colorScheme === 'dark' ? '#333' : '#eee' }]}>
-              <IconSymbol name="photo-library" size={32} color={colorScheme === 'dark' ? '#444' : '#ccc'} />
-            </View>
-          )}
-        </ScrollView>
-
+      <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
+        <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+          {pinPictures && pinPictures.map((picture: any, index: number) => (<TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>{picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}</TouchableOpacity>))}
+          {newImages.map((image, index) => (<TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}><Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" /><TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}><Text style={styles.removeImageText}>x</Text></TouchableOpacity></TouchableOpacity>))}
+          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>{isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}</TouchableOpacity>
+        </GHScrollView>
         <View style={styles.formContainer}>
-
           {pins.length > 1 ? (
             <View style={styles.groupSelectorContainer}>
               <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>
                 Memories at this location
               </Text>
-
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.groupSelectorRow}>
                   {pins.map((groupPin: any, index: number) => {
@@ -264,8 +251,8 @@ export default function ViewEditPinSheet({
                             backgroundColor: isActive
                               ? theme.tint
                               : colorScheme === "dark"
-                              ? "#333"
-                              : "#e5e7eb",
+                                ? "#333"
+                                : "#e5e7eb",
                             borderColor: colorScheme === "dark" ? "#444" : "#ccc",
                           },
                         ]}
@@ -287,358 +274,89 @@ export default function ViewEditPinSheet({
           ) : null}
 
           <View style={styles.titleRow}>
-            <TextInput
-              style={[styles.titleInput, { color: theme.text }]}
-              placeholder="Location Name"
-              placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
-              value={title}
-              onChangeText={setTitle}
-              onFocus={() => snapTo(2)}
-            />
+            <TextInput style={[styles.titleInput, { color: theme.text }]} placeholder="Name" value={title} onChangeText={setTitle} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
             <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
           </View>
-
           <View style={styles.metaRow}>
-            <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}>
-              <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-              <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text>
-            </TouchableOpacity>
-
-            <View style={styles.addressContainer}>
-              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>
-                {activePin.address || "No address provided"}
-              </Text>
-            </View>
+            <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
+            <View style={styles.addressContainer}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{activePin.address || "No address provided"}</Text></View>
           </View>
-
-          {/* Render Selected Tags */}
-          {pinTags && pinTags.length > 0 && (
-            <View style={styles.selectedTagsContainer}>
-              {pinTags.map((tag: any) => (
-                <View key={tag._id} style={[styles.selectedTagPill, { backgroundColor: tag.color || '#3b82f6' }]}>
-                  <Text style={styles.selectedTagText}>{tag.name}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
           <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
-            <TextInput
-              style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]}
-              placeholder="Add Notes..."
-              placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
-              multiline={true}
-              value={description}
-              onChangeText={setDescription}
-              onFocus={() => snapTo(2)}
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleUpdate}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.saveButtonText}>Update</Text>
-              )}
-            </TouchableOpacity>
+            <TextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Notes..." multiline value={description} onChangeText={setDescription} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
+            <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting || isUploadingImages}>{isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}</TouchableOpacity>
           </View>
         </View>
       </BottomSheetScrollView>
 
-      {/* Tags Modal */}
-      <Modal visible={showTagModal} animationType="slide" transparent={true} onRequestClose={() => setShowTagModal(false)}>
+      <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => setViewerIndex(null)}>
+        <View style={styles.galleryOverlay}>
+          <TouchableOpacity style={[styles.fullscreenCloseButton, { top: Platform.OS === 'ios' ? 50 : 30 }]} onPress={() => setViewerIndex(null)}><Text style={styles.fullscreenCloseText}>✕</Text></TouchableOpacity>
+          <FlatList data={allViewerPictures} keyExtractor={(item) => item.storageId} horizontal pagingEnabled initialScrollIndex={viewerIndex ?? 0} getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })} onMomentumScrollEnd={(e) => setViewerIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))} renderItem={({ item }) => (<View style={styles.fullscreenImageWrapper}>{item.url ? <Image source={{ uri: item.url }} style={styles.fullscreenImage} contentFit="contain" /> : null}</View>)} />
+          {viewerIndex !== null && (<View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}><TextInput style={styles.captionInput} placeholder="Add a caption..." placeholderTextColor="#a1a1aa" value={currentActiveCaption} onChangeText={handleUpdateCaption} multiline maxLength={150} /></View>)}
+        </View>
+      </Modal>
+
+      <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text>
-              <TouchableOpacity onPress={() => setShowTagModal(false)}>
-                <Text style={[styles.modalCloseText, { color: theme.text }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text></View>
             <ScrollView style={{ padding: 16 }}>
               {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
                 <View key={category} style={{ marginBottom: 20 }}>
                   <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                    {tags && tags.map((tag: any) => {
-                      const isSelected = pinTags?.some((t: any) => t._id === tag._id);
-                      return (
-                        <TouchableOpacity
-                          key={tag._id}
-                          onPress={() => toggleTagSelection(tag)}
-                          style={[styles.tagOption, { backgroundColor: isSelected ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb"), borderWidth: isSelected ? 0 : 1, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}
-                        >
-                          <Text style={[styles.tagOptionText, { color: isSelected ? "#fff" : theme.text }]}>{tag.name}{isSelected ? " ✓" : ""}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {tags.map((tag: any) => (<TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: pinTags?.some((t: any) => t._id === tag._id) ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb") }]}><Text style={{ color: pinTags?.some((t: any) => t._id === tag._id) ? "#fff" : theme.text }}>{tag.name}</Text></TouchableOpacity>))}
                   </View>
                 </View>
               ))}
-              <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
-                <Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
-                <TextInput
-                  value={newTagName}
-                  onChangeText={setNewTagName}
-                  placeholder="Tag name..."
-                  placeholderTextColor="#666"
-                  style={[styles.newTagInput, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#fff', color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}
-                />
-                <Text style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>Choose a color:</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                  {["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map((color) => (
-                    <TouchableOpacity key={color} onPress={() => setSelectedColor(color)} style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]} />
-                  ))}
-                </View>
-                <TouchableOpacity style={styles.createTagButton} onPress={handleCreateTag}>
-                  <Text style={styles.createTagButtonText}>Create Tag</Text>
-                </TouchableOpacity>
-              </View>
             </ScrollView>
           </View>
         </View>
       </Modal>
-
     </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  sheetBackground: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24
-  },
-  handleIndicator: {
-    width: 40
-  },
-  scrollWrapper: {
-    flex: 1
-  },
-  contentContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 20
-  },
-  imageScroll: {
-    flexGrow: 0,
-    marginBottom: 20
-  },
-  addImageButton: {
-    width: 100,
-    height: 120,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10
-  },
-  placeholderImageBox: {
-    width: 100,
-    height: 120,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10
-  },
-  imagePreviewContainer: {
-    width: 100,
-    height: 120,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginRight: 10,
-    position: 'relative'
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%'
-  },
-  formContainer: {
-    flex: 1
-  },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10
-  },
-  titleInput: {
-    fontSize: 24,
-    fontWeight: '700',
-    flex: 1,
-    marginRight: 10
-  },
-  dateText: {
-    fontSize: 14
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12
-  },
-  metaButton: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  metaText: {
-    marginLeft: 4,
-    fontSize: 14
-  },
-  addressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'flex-end',
-    marginLeft: 15
-  },
-  addressText: {
-    marginLeft: 4,
-    fontSize: 14,
-    textAlign: 'right',
-    flexShrink: 1
-  },
-  selectedTagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 15
-  },
-  selectedTagPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12
-  },
-  selectedTagText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500'
-  },
-  notesAndSaveRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    marginBottom: 20
-  },
-  notesAndSaveRowExpanded: {
-    flex: 1,
-    alignItems: 'flex-start'
-  },
-  notesInput: {
-    flex: 1,
-    fontSize: 14,
-    paddingVertical: 8,
-    marginRight: 10,
-    maxHeight: 60
-  },
-  notesInputExpanded: {
-    flex: 1,
-    maxHeight: '100%',
-    textAlignVertical: 'top'
-  },
-  saveButton: {
-    backgroundColor: '#000',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 20
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600'
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: 'flex-end'
-  },
-  modalContent: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    maxHeight: "85%",
-    minHeight: "50%"
-  },
-  modalHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600"
-  },
-  modalCloseText: {
-    fontSize: 24
-  },
-  categoryTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 10
-  },
-  tagOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16
-  },
-  tagOptionText: {
-    fontSize: 13,
-    fontWeight: "500"
-  },
-  createTagSection: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    paddingBottom: 40
-  },
-  newTagInput: {
-    borderWidth: 1,
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 12
-  },
-  colorCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20
-  },
-  createTagButton: {
-    backgroundColor: '#000',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center'
-  },
-  createTagButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14
-  },
-  groupSelectorContainer: {
-    marginBottom: 14,
-  },
-  groupSelectorLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 8,
-    opacity: 0.8,
-  },
-  groupSelectorRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  groupSelectorChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-  }
-
+  handleContainer: { width: '100%', alignItems: 'center', paddingTop: 12, paddingBottom: 10 },
+  handleIndicator: { width: 40, height: 4, borderRadius: 2 },
+  contentContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  imageScroll: { marginBottom: 20 },
+  addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10, position: 'relative' },
+  previewImage: { width: '100%', height: '100%' },
+  removeImageButton: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
+  removeImageText: { color: '#fff', fontSize: 13, fontWeight: '700', lineHeight: 15 },
+  formContainer: { flex: 1 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  titleInput: { fontSize: 24, fontWeight: '700', flex: 1, marginRight: 10 },
+  dateText: { fontSize: 14 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  metaButton: { flexDirection: 'row', alignItems: 'center' },
+  metaText: { marginLeft: 4, fontSize: 14 },
+  addressContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginLeft: 15 },
+  addressText: { marginLeft: 4, fontSize: 14, textAlign: 'right', flexShrink: 1 },
+  notesAndSaveRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 },
+  notesAndSaveRowExpanded: { flex: 1 },
+  notesInput: { flex: 1, fontSize: 14, paddingVertical: 8, marginRight: 10, maxHeight: 60 },
+  notesInputExpanded: { flex: 1, maxHeight: '100%', textAlignVertical: 'top' },
+  saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20 },
+  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  galleryOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.95)' },
+  fullscreenCloseButton: { position: 'absolute', right: 20, zIndex: 100, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  fullscreenCloseText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  fullscreenImageWrapper: { width: screenWidth, height: screenHeight, justifyContent: 'center', alignItems: 'center' },
+  fullscreenImage: { width: '100%', height: '100%' },
+  captionInputContainer: { position: 'absolute', width: '90%', alignSelf: 'center', backgroundColor: 'rgba(28, 28, 30, 0.85)', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)', zIndex: 100 },
+  captionInput: { color: '#ffffff', fontSize: 15, maxHeight: 100 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "85%", minHeight: "50%" },
+  modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  modalTitle: { fontSize: 18, fontWeight: "600" },
+  categoryTitle: { fontSize: 14, fontWeight: "600", marginBottom: 10 },
+  tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  groupSelectorContainer: { marginBottom: 14 },
+  groupSelectorLabel: { fontSize: 13, fontWeight: "600", marginBottom: 8, opacity: 0.8 },
+  groupSelectorRow: { flexDirection: "row", gap: 8 },
+  groupSelectorChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1 }
 });
