@@ -8,7 +8,7 @@ import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as Clipboard from 'expo-clipboard'; // <-- Added Clipboard Import
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -38,11 +38,13 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const [sheetIndex, setSheetIndex] = useState(0);
   const [isSheetInputFocused, setIsSheetInputFocused] = useState(false);
 
+  const targetPin = activePin || pin;
+
   const updatePin = useMutation(api.pins.updatePin);
   const generateUploadUrl = useMutation(api.pins.generateUploadUrl);
   const allTags = useQuery(api.pinTags.getAllTags);
-  const pinTags = useQuery(api.pinTags.getTagsForPin, activePin ? { pinId: activePin._id } : "skip");
-  const pinPictures = useQuery(api.pins.getPinPictures, activePin ? { pinId: activePin._id } : "skip");
+  const pinTags = useQuery(api.pinTags.getTagsForPin, targetPin ? { pinId: targetPin._id } : "skip");
+  const pinPictures = useQuery(api.pins.getPinPictures, targetPin ? { pinId: targetPin._id } : "skip");
   const addTagToPin = useMutation(api.pinTags.addTagToPin);
   const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
 
@@ -66,21 +68,27 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     programmaticSnapRef.current = true;
     bottomSheetRef.current?.snapToIndex(index);
     if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
-    programmaticTimeoutRef.current = setTimeout(() => { programmaticSnapRef.current = false; }, 100);
+    programmaticTimeoutRef.current = setTimeout(() => { programmaticSnapRef.current = false; }, 500);
   };
 
   useEffect(() => {
-    if (minimizeTrigger && minimizeTrigger > 0) {
+    // <-- FIX: Ensure we only listen to map dragging if we are actually OPEN
+    if (minimizeTrigger && minimizeTrigger > 0 && isOpen) {
       Keyboard.dismiss();
       snapTo(0);
     }
-  }, [minimizeTrigger]);
+  }, [minimizeTrigger, isOpen]);
 
   useEffect(() => {
-    const backAction = () => { if (viewerIndex !== null) { setViewerIndex(null); return true; } if (sheetIndex > 0) { snapTo(0); return true; } return false; };
+    const backAction = () => {
+      if (!isOpen) return false; // <-- FIX: Only intercept back button if open
+      if (viewerIndex !== null) { setViewerIndex(null); return true; }
+      if (sheetIndex > 0) { snapTo(0); return true; }
+      return false;
+    };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [sheetIndex, viewerIndex]);
+  }, [sheetIndex, viewerIndex, isOpen]);
 
   useEffect(() => {
     if (isOpen && pin) {
@@ -90,9 +98,8 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       setNewImages([]);
       setThumbnailStorageId(null);
       setCaptionEdits({});
-      snapTo(1);
+      setTimeout(() => snapTo(1), 50);
     } else {
-      setActivePin(null);
       bottomSheetRef.current?.close();
       Keyboard.dismiss();
     }
@@ -192,46 +199,43 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   };
 
   const toggleTagSelection = async (tag: any) => {
-    if (!activePin) return;
-    try { if (pinTags?.some((t: any) => t._id === tag._id)) await removeTagFromPin({ pinId: activePin._id, tagId: tag._id }); else await addTagToPin({ pinId: activePin._id, tagId: tag._id }); }
+    if (!targetPin) return;
+    try { if (pinTags?.some((t: any) => t._id === tag._id)) await removeTagFromPin({ pinId: targetPin._id, tagId: tag._id }); else await addTagToPin({ pinId: targetPin._id, tagId: tag._id }); }
     catch (err: any) { console.log(err); }
   };
 
   const handleUpdate = async () => {
-    if (!activePin) return;
+    if (!targetPin) return;
     setIsSubmitting(true);
     try {
       const existingStorageIds = Array.isArray(pinPictures)
         ? pinPictures.map((p: any) => p.storageId)
-        : (activePin.pictures || []);
+        : (targetPin.pictures || []);
 
       const combinedPictures = [...existingStorageIds, ...newImages.map(img => img.storageId)];
 
       const finalCaptions: Record<string, string> = {};
       if (Array.isArray(pinPictures)) {
         pinPictures.forEach((pic: any) => { if (pic.caption) finalCaptions[pic.storageId] = pic.caption; });
-      } else if (activePin.captions) {
-        Object.assign(finalCaptions, activePin.captions);
+      } else if (targetPin.captions) {
+        Object.assign(finalCaptions, targetPin.captions);
       }
 
       Object.entries(captionEdits).forEach(([storageId, text]) => { if (text.trim()) finalCaptions[storageId] = text.trim(); else delete finalCaptions[storageId]; });
       newImages.forEach(img => { if (img.caption.trim()) finalCaptions[img.storageId] = img.caption.trim(); });
 
-      await updatePin({ pinId: activePin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
+      await updatePin({ pinId: targetPin._id, title, description, pictures: combinedPictures, captions: finalCaptions, ...(thumbnailStorageId ? { thumbnail: thumbnailStorageId } : {}) });
       onClose();
     } catch (e: any) { console.error(e.message); } finally { setIsSubmitting(false); }
   };
 
-  // <-- New Function Added -->
   const handleCopyAddress = async () => {
-    const addressToCopy = activePin?.address || "No address provided";
+    const addressToCopy = targetPin?.address || "No address provided";
     if (addressToCopy !== "No address provided") {
       await Clipboard.setStringAsync(addressToCopy);
       Alert.alert("Copied", "Address copied to clipboard!");
     }
   };
-
-  if (!activePin) return null;
 
   const allViewerPictures = [...(pinPictures || []).map((p: any) => ({ storageId: p.storageId, url: p.url, caption: p.caption, isExisting: true })), ...newImages.map(img => ({ storageId: img.storageId, url: img.uri, caption: img.caption, isExisting: false }))];
   let currentActiveCaption = '';
@@ -241,88 +245,93 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     else currentActiveCaption = activePic.caption;
   }
 
-  const displayDate = activePin.createdAt
-    ? new Date(activePin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
+  const displayDate = targetPin?.createdAt
+    ? new Date(targetPin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })
     : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 
   return (
     <BottomSheet ref={bottomSheetRef} index={-1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose} onChange={setSheetIndex} backgroundStyle={{ backgroundColor: theme.background }}
-      onAnimate={(from, to) => { if (programmaticSnapRef.current) return; if (to - from > 1) snapTo(from + 1); else if (from - to > 1) snapTo(from - 1); }}
+      onAnimate={(fromIndex, toIndex) => {
+        if (programmaticSnapRef.current) return;
+        if (fromIndex === -1 || toIndex === -1) return;
+        if (toIndex - fromIndex > 1) snapTo(fromIndex + 1);
+        else if (fromIndex - toIndex > 1) snapTo(fromIndex - 1);
+      }}
       handleComponent={() => (
         <TouchableOpacity activeOpacity={1} onPress={() => { if (sheetIndex === 0) snapTo(1); }} style={styles.handleContainer}>
           <View style={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]} />
         </TouchableOpacity>
       )}
     >
-      <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
-        <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-          {pinPictures && pinPictures.map((picture: any, index: number) => (<TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>{picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}</TouchableOpacity>))}
-          {newImages.map((image, index) => (<TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}><Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" /><TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}><Text style={styles.removeImageText}>x</Text></TouchableOpacity></TouchableOpacity>))}
-          <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>{isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}</TouchableOpacity>
-        </GHScrollView>
-        <View style={styles.formContainer}>
-          {pins.length > 1 ? (
-            <View style={styles.groupSelectorContainer}>
-              <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>
-                Memories at this location
-              </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.groupSelectorRow}>
-                  {pins.map((groupPin: any, index: number) => {
-                    const isActive = activePin?._id === groupPin._id;
-                    return (
-                      <TouchableOpacity
-                        key={groupPin._id}
-                        onPress={() => setActivePin(groupPin)}
-                        style={[
-                          styles.groupSelectorChip,
-                          {
-                            backgroundColor: isActive
-                              ? theme.tint
-                              : colorScheme === "dark"
-                                ? "#333"
-                                : "#e5e7eb",
-                            borderColor: colorScheme === "dark" ? "#444" : "#ccc",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: isActive ? "#fff" : theme.text,
-                            fontWeight: "600",
-                          }}
+      {targetPin ? (
+        <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
+          <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+            {pinPictures && pinPictures.map((picture: any, index: number) => (<TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>{picture.url ? <Image source={{ uri: picture.url }} style={styles.previewImage} contentFit="cover" /> : null}</TouchableOpacity>))}
+            {newImages.map((image, index) => (<TouchableOpacity key={image.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex((pinPictures?.length || 0) + index)}><Image source={{ uri: image.uri }} style={styles.previewImage} contentFit="cover" /><TouchableOpacity style={styles.removeImageButton} onPress={() => handleRemoveNewImage(image.storageId)}><Text style={styles.removeImageText}>x</Text></TouchableOpacity></TouchableOpacity>))}
+            <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])} disabled={isUploadingImages || isSubmitting}>{isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}</TouchableOpacity>
+          </GHScrollView>
+          <View style={styles.formContainer}>
+            {pins.length > 1 ? (
+              <View style={styles.groupSelectorContainer}>
+                <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>
+                  Memories at this location
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.groupSelectorRow}>
+                    {pins.map((groupPin: any, index: number) => {
+                      const isActive = targetPin?._id === groupPin._id;
+                      return (
+                        <TouchableOpacity
+                          key={groupPin._id}
+                          onPress={() => setActivePin(groupPin)}
+                          style={[
+                            styles.groupSelectorChip,
+                            {
+                              backgroundColor: isActive
+                                ? theme.tint
+                                : colorScheme === "dark"
+                                  ? "#333"
+                                  : "#e5e7eb",
+                              borderColor: colorScheme === "dark" ? "#444" : "#ccc",
+                            },
+                          ]}
                         >
-                          {groupPin.title || `Memory ${index + 1}`}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+                          <Text
+                            style={{
+                              color: isActive ? "#fff" : theme.text,
+                              fontWeight: "600",
+                            }}
+                          >
+                            {groupPin.title || `Memory ${index + 1}`}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <View style={styles.titleRow}>
+              <TextInput style={[styles.titleInput, { color: theme.text }]} placeholder="Name" value={title} onChangeText={setTitle} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
+              <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
             </View>
-          ) : null}
-
-          <View style={styles.titleRow}>
-            <TextInput style={[styles.titleInput, { color: theme.text }]} placeholder="Name" value={title} onChangeText={setTitle} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
-            <Text style={[styles.dateText, { color: colorScheme === 'dark' ? '#666' : '#888' }]}>{displayDate}</Text>
+            <View style={styles.metaRow}>
+              <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
+                <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+                <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{targetPin.address || "No address provided"}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
+              <TextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Notes..." multiline value={description} onChangeText={setDescription} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
+              <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting || isUploadingImages}>{isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}</TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.metaRow}>
-            <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
-
-            {/* <-- Changed to TouchableOpacity and added onPress --> */}
-            <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
-              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>
-                {activePin.address || "No address provided"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
-            <TextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Notes..." multiline value={description} onChangeText={setDescription} onFocus={() => { setIsSheetInputFocused(true); snapTo(2); }} onBlur={() => setIsSheetInputFocused(false)} />
-            <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting || isUploadingImages}>{isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}</TouchableOpacity>
-          </View>
-        </View>
-      </BottomSheetScrollView>
+        </BottomSheetScrollView>
+      ) : (
+        <View style={{ flex: 1 }} />
+      )}
 
       <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => setViewerIndex(null)}>
         <View style={styles.galleryOverlay}>
@@ -376,7 +385,7 @@ const styles = StyleSheet.create({
   selectedTagPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   selectedTagText: { color: '#fff', fontSize: 12, fontWeight: '500' },
   notesAndSaveRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 },
-  notesAndSaveRowExpanded: { flex: 1 },
+  notesAndSaveRowExpanded: { flex: 1, alignItems: 'flex-start' },
   notesInput: { flex: 1, fontSize: 14, paddingVertical: 8, marginRight: 10, maxHeight: 60 },
   notesInputExpanded: { flex: 1, maxHeight: '100%', textAlignVertical: 'top' },
   saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20 },

@@ -29,35 +29,34 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
 }
 
 // Renders an individual custom marker on the map.
-function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pin: any, colorScheme: string, theme: any, onPinPress: any, onCalloutPress: any }) {
+function PinMarker({ pin, theme, isSelected, onPinPress }: { pin: any, theme: any, isSelected: boolean, onPinPress: any }) {
   const { width } = useWindowDimensions();
 
   const imageId = pin.thumbnail ? pin.thumbnail : (pin.pictures && pin.pictures.length > 0 ? pin.pictures[0] : null);
   const fetchedImageUrl = useQuery(api.pins.getImageUrl, imageId ? { storageId: imageId } : "skip");
 
-  const PIN_SIZE = 38;
-  const BORDER_THICKNESS = 2;
-  const IMAGE_SIZE = PIN_SIZE - (BORDER_THICKNESS * 2);
+  const PIN_SIZE = 36;
+  const BORDER_THICKNESS = 4;
+  const IMAGE_SIZE = PIN_SIZE - (BORDER_THICKNESS * 1);
 
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
-    if (!imageId || fetchedImageUrl === null) {
-      const timer = setTimeout(() => setTracksViewChanges(false), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [imageId, fetchedImageUrl]);
+    setTracksViewChanges(true); // Temporarily wake up the marker to redraw
+    const timer = setTimeout(() => setTracksViewChanges(false), 500);
+    return () => clearTimeout(timer);
+  }, [imageId, fetchedImageUrl, isSelected]);
 
-  const frameColor = colorScheme === 'dark' ? '#2c2c2e' : '#ffffff';
+  // Black if selected, Adwaita Blue (#62a0ea) if not
+  const frameColor = isSelected ? '#000000' : '#62a0ea';
 
   return (
     <Marker
       key={pin._id}
       coordinate={{ latitude: pin.markerLat ?? pin.lat, longitude: pin.markerLng ?? pin.lng }}
-      title={pin.title}
       tracksViewChanges={tracksViewChanges}
       onPress={onPinPress}
-      onCalloutPress={onCalloutPress}
+      style={{ zIndex: isSelected ? 999 : 1 }}
     >
       <View style={{
         width: PIN_SIZE,
@@ -80,7 +79,7 @@ function PinMarker({ pin, colorScheme, theme, onPinPress, onCalloutPress }: { pi
           <View style={{
             width: IMAGE_SIZE,
             height: IMAGE_SIZE,
-            borderRadius: 4,
+            borderRadius: 6,
             overflow: 'hidden',
             backgroundColor: theme.background,
             justifyContent: 'center',
@@ -128,6 +127,8 @@ export default function MapScreen() {
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
   const adwaitaBlue = '#62a0ea';
+
+  const getLatitudeOffset = (zoomDelta: number) => zoomDelta * 0.25;
 
   const [currentRegion, setCurrentRegion] = useState({
     latitude: 33.783,
@@ -190,9 +191,12 @@ export default function MapScreen() {
     const targetLng = foundPin?.lng ?? (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
 
     if (targetLat !== undefined && targetLng !== undefined) {
+      const isOpeningSheet = openPinParam === "true" || params.openSheet === "true";
+      const offsetTarget = isOpeningSheet ? targetLat - getLatitudeOffset(0.01) : targetLat;
+
       setTimeout(() => {
         mapRef.current?.animateToRegion({
-          latitude: targetLat,
+          latitude: offsetTarget,
           longitude: targetLng,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
@@ -212,10 +216,10 @@ export default function MapScreen() {
     setSelectedPin(null);
 
     mapRef.current?.animateToRegion({
-      latitude,
+      latitude: latitude - getLatitudeOffset(0.02),
       longitude,
-      latitudeDelta: 0.005,
-      longitudeDelta: 0.005,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
     }, 500);
   };
 
@@ -255,7 +259,7 @@ export default function MapScreen() {
       const primaryLang = Localization.getLocales()[0]?.languageCode ?? 'en';
       const acceptLangString = `${primaryLang},en;q=0.9`;
 
-      const searchRadius = 0.5; // roughly 50km in degrees
+      const searchRadius = 0.5;
       const lon1 = currentRegion.longitude - searchRadius;
       const lat1 = currentRegion.latitude + searchRadius;
       const lon2 = currentRegion.longitude + searchRadius;
@@ -324,10 +328,10 @@ export default function MapScreen() {
     setSelectedPin(null);
 
     mapRef.current?.animateToRegion({
-      latitude: lat,
+      latitude: lat - getLatitudeOffset(0.02),
       longitude: lng,
-      latitudeDelta: 0.005,
-      longitudeDelta: 0.005,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
     }, 800);
   };
 
@@ -402,6 +406,15 @@ export default function MapScreen() {
     setIsViewSheetOpen(true);
     setViewPinTrigger(prev => prev + 1);
     setIsSheetOpen(false);
+
+    const currentZoom = currentRegion.latitudeDelta;
+
+    mapRef.current?.animateToRegion({
+      latitude: pin.lat - getLatitudeOffset(currentZoom),
+      longitude: pin.lng,
+      latitudeDelta: currentZoom,
+      longitudeDelta: currentRegion.longitudeDelta,
+    }, 500);
   };
 
   return (
@@ -433,7 +446,6 @@ export default function MapScreen() {
         {isSheetOpen && selectedLat !== undefined && selectedLng !== undefined && (
           <Marker
             coordinate={{ latitude: selectedLat, longitude: selectedLng }}
-            title="New Pin"
             zIndex={999}
             onPress={() => setAddPinTrigger(prev => prev + 1)}
           />
@@ -443,13 +455,10 @@ export default function MapScreen() {
           <PinMarker
             key={pin._id}
             pin={pin}
-            colorScheme={colorScheme ?? 'light'}
             theme={theme}
+            isSelected={selectedPin?._id === pin._id}
             onPinPress={(e: any) => {
               e.stopPropagation();
-              handleOpenPin(pin);
-            }}
-            onCalloutPress={() => {
               handleOpenPin(pin);
             }}
           />
@@ -520,10 +529,10 @@ export default function MapScreen() {
           setSelectedLat(lat);
           setSelectedLng(lng);
           mapRef.current?.animateToRegion({
-            latitude: lat,
+            latitude: lat - getLatitudeOffset(0.02),
             longitude: lng,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
+            latitudeDelta: 0.02,
+            longitudeDelta: 0.02,
           }, 800);
         }}
       />
@@ -573,5 +582,5 @@ const styles = StyleSheet.create({
   predictionsContainer: { borderRadius: 16, marginTop: 8, elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
   predictionItem: { padding: 14, borderBottomWidth: 1 },
   predictionMainText: { fontSize: 16, fontWeight: '600' },
-  predictionSubText: { fontSize: 12, marginTop: 2 },
+  predictionSubText: { fontSize: 12, marginTop: 2 }
 });

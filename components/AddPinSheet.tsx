@@ -7,7 +7,7 @@ import { useMutation, useQuery } from 'convex/react';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import * as Clipboard from 'expo-clipboard'; // <-- Added Clipboard Import
+import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,7 +54,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
 
-  // Landmark state
   const [showLandmarkModal, setShowLandmarkModal] = useState(false);
   const [landmarkSearch, setLandmarkSearch] = useState("");
   const [selectedLandmark, setSelectedLandmark] = useState<any | null>(null);
@@ -65,7 +64,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   );
 
   const getNearbyCuratedBeach = (latitude: number, longitude: number) => {
-    const BEACH_DISTANCE_THRESHOLD = 0.02; // roughly ~1 km, good starting point
+    const BEACH_DISTANCE_THRESHOLD = 0.02;
 
     const beachLandmarks = CURATED_LANDMARKS.filter((landmark) =>
       landmark.collectionKeys?.includes("ca_beaches")
@@ -117,22 +116,27 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     programmaticSnapRef.current = true;
     bottomSheetRef.current?.snapToIndex(index);
     if (programmaticTimeoutRef.current) clearTimeout(programmaticTimeoutRef.current);
-    programmaticTimeoutRef.current = setTimeout(() => { programmaticSnapRef.current = false; }, 100);
+    programmaticTimeoutRef.current = setTimeout(() => { programmaticSnapRef.current = false; }, 500);
   };
 
   useEffect(() => {
-    if (minimizeTrigger && minimizeTrigger > 0) snapTo(0);
-  }, [minimizeTrigger]);
+    // <-- FIX: Ensure we only listen to map dragging if we are actually OPEN
+    if (minimizeTrigger && minimizeTrigger > 0 && isOpen) {
+      Keyboard.dismiss();
+      snapTo(0);
+    }
+  }, [minimizeTrigger, isOpen]);
 
   useEffect(() => {
     const backAction = () => {
+      if (!isOpen) return false; // <-- FIX: Only intercept back button if open
       if (activeGalleryIndex !== null) { setActiveGalleryIndex(null); return true; }
       if (sheetIndex > 0) { snapTo(0); return true; }
       return false;
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [sheetIndex, activeGalleryIndex]);
+  }, [sheetIndex, activeGalleryIndex, isOpen]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -152,7 +156,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
   useEffect(() => {
     if (isOpen) {
-      snapTo(1);
+      setTimeout(() => snapTo(1), 50);
       if (initialTitle) setTitle(initialTitle);
       if (initialAddress) setAddress(initialAddress);
       if (initialLat && initialLng) {
@@ -333,7 +337,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     }
   };
 
-  // <-- New Function Added -->
   const handleCopyAddress = async () => {
     const addressToCopy = address || "Locating...";
     if (addressToCopy !== "Locating...") {
@@ -346,7 +349,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
 
   return (
     <BottomSheet ref={bottomSheetRef} index={-1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose} onChange={setSheetIndex} backgroundStyle={[styles.sheetBackground, { backgroundColor: theme.background }]}
-      onAnimate={(from, to) => { if (programmaticSnapRef.current) return; if (to - from > 1) snapTo(from + 1); else if (from - to > 1) snapTo(from - 1); }}
+      onAnimate={(fromIndex, toIndex) => {
+        if (programmaticSnapRef.current) return;
+        if (fromIndex === -1 || toIndex === -1) return;
+        if (toIndex - fromIndex > 1) snapTo(fromIndex + 1);
+        else if (fromIndex - toIndex > 1) snapTo(fromIndex - 1);
+      }}
       handleComponent={() => (
         <TouchableOpacity activeOpacity={1} onPress={() => { if (sheetIndex === 0) snapTo(1); }} style={styles.handleContainer}>
           <View style={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]} />
@@ -376,7 +384,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
             <TouchableOpacity style={styles.metaButton} onPress={() => setShowLandmarkModal(true)}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Landmark +</Text></TouchableOpacity>
 
-            {/* <-- Changed to TouchableOpacity and added onPress --> */}
             <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
               <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
               <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text>
