@@ -14,6 +14,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { compressPinImage } from '@/hooks/image-compressor';
 
+// Accessible globally to both the component and the StyleSheet
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 interface ViewEditPinSheetProps {
@@ -35,8 +36,23 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const [activePin, setActivePin] = useState<any | null>(null);
   const targetPin = activePin || pin;
 
-  // Uses identical snap points to AddPinSheet for consistency
-  const snapPoints = useMemo(() => ['4%', '45%', '95%'], []);
+  // --- PRECISE DYNAMIC MAX HEIGHT CALCULATION ---
+  const maxSheetHeight = useMemo(() => {
+    // 1. Calculate Top Reserved Space
+    // insets.top + 10 (gap) + 50 (search height) + 10 (matching gap)
+    const topReserved = insets.top + 70;
+
+    // 2. Calculate Bottom Reserved Space 
+    // insets.bottom + (10% screenHeight for Tab Bar)
+    const tabHeight = screenHeight * 0.1;
+    const bottomReserved = insets.bottom + tabHeight;
+
+    // 3. Exact available space between Search Bar and Tab Bar
+    return screenHeight - topReserved - bottomReserved;
+  }, [insets.top, insets.bottom]);
+
+  const snapPoints = useMemo(() => ['4%', '45%', maxSheetHeight], [maxSheetHeight]);
+
   const [sheetIndex, setSheetIndex] = useState(0);
   const [isSheetInputFocused, setIsSheetInputFocused] = useState(false);
 
@@ -69,10 +85,20 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const programmaticSnapRef = useRef(false);
 
   const snapTo = (index: number) => {
+    const safeIndex = Math.max(0, Math.min(index, snapPoints.length - 1));
     programmaticSnapRef.current = true;
-    bottomSheetRef.current?.snapToIndex(index);
+    bottomSheetRef.current?.snapToIndex(safeIndex);
     setTimeout(() => { programmaticSnapRef.current = false; }, 500);
   };
+
+  useEffect(() => {
+    const keyboardEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const keyboardListener = Keyboard.addListener(keyboardEvent, () => {
+      snapTo(1);
+      setIsSheetInputFocused(false);
+    });
+    return () => keyboardListener.remove();
+  }, [snapPoints]);
 
   useEffect(() => {
     if (minimizeTrigger && minimizeTrigger > 0 && isOpen) {
@@ -100,7 +126,6 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       setNewImages([]);
       setThumbnailStorageId(null);
       setCaptionEdits({});
-      // Ensure UI is ready before raising sheet
       setTimeout(() => snapTo(1), 50);
     } else {
       bottomSheetRef.current?.close();
@@ -257,10 +282,14 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       onChange={setSheetIndex}
       backgroundStyle={{ backgroundColor: theme.background }}
       keyboardBehavior="extend"
-      keyboardBlurBehavior="restore"
+      keyboardBlurBehavior="none"
       onAnimate={(fromIndex, toIndex) => {
         if (programmaticSnapRef.current) return;
         if (fromIndex === -1 || toIndex === -1) return;
+
+        if (toIndex >= snapPoints.length) return;
+        if (toIndex === snapPoints.length - 1) return;
+
         if (toIndex - fromIndex > 1) snapTo(fromIndex + 1);
         else if (fromIndex - toIndex > 1) snapTo(fromIndex - 1);
       }}
@@ -332,10 +361,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
                 multiline
                 value={description}
                 onChangeText={setDescription}
-                onFocus={() => {
-                  setIsSheetInputFocused(true);
-                  snapTo(2);
-                }}
+                onFocus={() => setIsSheetInputFocused(true)}
                 onBlur={() => setIsSheetInputFocused(false)}
                 blurOnSubmit={true}
                 onSubmitEditing={() => Keyboard.dismiss()}
