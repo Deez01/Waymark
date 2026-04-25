@@ -233,6 +233,9 @@ export const getPinsWithUrls = query({
     );
 
     return pinsWithUrls;
+    },
+});
+
 // gives a clean way to display/filter landmark memories later
 export const getLandmarkPins = query({
   args: {},
