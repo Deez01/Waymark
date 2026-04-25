@@ -1,13 +1,13 @@
 // app/(tabs)/index.tsx
 import { api } from "@/convex/_generated/api";
 import { MaterialIcons } from '@expo/vector-icons';
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import * as Localization from 'expo-localization';
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Image, Keyboard, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from "react-native";
 import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Localization from 'expo-localization';
 
 import AddPinSheet from "@/components/AddPinSheet";
 import ViewEditPinSheet from "@/components/ViewEditPinSheet";
@@ -120,10 +120,16 @@ function PinMarker({ pin, theme, isSelected, onPinPress }: { pin: any, theme: an
 // Main map screen component.
 export default function MapScreen() {
   const pins = useQuery(api.pins.getAllPins);
+  const allTags = useQuery(api.pinTags.getAllTags);
+  const allPinTagsWithDetails = useQuery(api.pinTags.getAllPinTagsWithDetails);
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView | null>(null);
+  const addTagToPin = useMutation(api.pinTags.addTagToPin);
+  const removeTagFromPin = useMutation(api.pinTags.removeTagFromPin);
+  const createTag = useMutation(api.pinTags.createTag);
+  const deletePin = useMutation(api.pins.deletePin);
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
   const adwaitaBlue = '#62a0ea';
@@ -155,6 +161,12 @@ export default function MapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedPinIds, setSelectedPinIds] = useState<string[]>([]);
+  const [isBulkTagModalOpen, setIsBulkTagModalOpen] = useState(false);
+  const [isBulkActionPending, setIsBulkActionPending] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [selectedColor, setSelectedColor] = useState("#3b82f6");
 
   const focusPinOnMap = (pin: any) => {
     const targetZoom = 0.01;
@@ -165,6 +177,209 @@ export default function MapScreen() {
       latitudeDelta: targetZoom,
       longitudeDelta: targetZoom,
     }, 500);
+  };
+
+  const enterMultiSelectMode = () => {
+    setIsMultiSelectMode(true);
+    setSelectedPinIds([]);
+    setIsSheetOpen(false);
+    setIsViewSheetOpen(false);
+    setSelectedPin(null);
+    setNearbyAnchorPin(null);
+  };
+
+  const exitMultiSelectMode = () => {
+    setIsMultiSelectMode(false);
+    setSelectedPinIds([]);
+    setIsBulkTagModalOpen(false);
+  };
+
+  const togglePinSelection = (pin: any) => {
+    const pinId = String(pin._id);
+    setSelectedPinIds((prev) =>
+      prev.includes(pinId)
+        ? prev.filter((id) => id !== pinId)
+        : [...prev, pinId]
+    );
+  };
+
+  const selectedPinsCount = selectedPinIds.length;
+
+  const selectedPinsForCarousel = useMemo(() => {
+    if (!pins?.length || !selectedPinIds.length) return [];
+
+    const pinsById = new Map(pins.map((pin: any) => [String(pin._id), pin]));
+    return selectedPinIds
+      .map((pinId) => pinsById.get(pinId))
+      .filter(Boolean);
+  }, [pins, selectedPinIds]);
+
+  const selectedPinsById = useMemo(() => {
+    return new Map(selectedPinsForCarousel.map((pin: any) => [String(pin._id), pin]));
+  }, [selectedPinsForCarousel]);
+
+  const selectedPinIdSet = useMemo(() => new Set(selectedPinIds), [selectedPinIds]);
+
+  const selectedTagCoverage = useMemo(() => {
+    const coverage = new Map<string, Set<string>>();
+    if (!allPinTagsWithDetails?.length || !selectedPinIds.length) return coverage;
+
+    for (const row of allPinTagsWithDetails) {
+      const pinId = String(row.pinId);
+      if (!selectedPinIdSet.has(pinId)) continue;
+
+      const tagId = String(row.tagId);
+      if (!coverage.has(tagId)) coverage.set(tagId, new Set<string>());
+      coverage.get(tagId)!.add(pinId);
+    }
+
+    return coverage;
+  }, [allPinTagsWithDetails, selectedPinIdSet, selectedPinIds.length]);
+
+  const selectedTagLinkCount = useMemo(() => {
+    let total = 0;
+    for (const coveredPinIds of selectedTagCoverage.values()) {
+      total += coveredPinIds.size;
+    }
+    return total;
+  }, [selectedTagCoverage]);
+
+  const tagsByCategory = useMemo(() => {
+    if (!allTags?.length) return {} as Record<string, any[]>;
+
+    return allTags.reduce((acc: Record<string, any[]>, tag: any) => {
+      const category = tag.category || "Other";
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(tag);
+      return acc;
+    }, {});
+  }, [allTags]);
+
+  const toggleBulkTagSelection = async (tag: any) => {
+    if (!selectedPinIds.length) return;
+
+    const tagId = String(tag._id);
+    const coveredPinIds = selectedTagCoverage.get(tagId) || new Set<string>();
+    const coveredCount = selectedTagCoverage.get(tagId)?.size || 0;
+    const isAppliedToAll = coveredCount === selectedPinIds.length;
+
+    setIsBulkActionPending(true);
+
+    for (const pinId of selectedPinIds) {
+      try {
+        if (isAppliedToAll) {
+          await removeTagFromPin({ pinId: pinId as any, tagId: tag._id });
+        } else if (!coveredPinIds.has(pinId)) {
+          await addTagToPin({ pinId: pinId as any, tagId: tag._id });
+        }
+      } catch {
+        // Continue to remaining pins if one operation fails.
+      }
+    }
+
+    setIsBulkActionPending(false);
+  };
+
+  const handleCreateBulkTag = async () => {
+    if (!newTagName.trim() || !selectedPinIds.length) return;
+
+    setIsBulkActionPending(true);
+    try {
+      const tagId = await createTag({ name: newTagName.trim(), color: selectedColor });
+      const existingCoverage = selectedTagCoverage.get(String(tagId)) || new Set<string>();
+
+      for (const pinId of selectedPinIds) {
+        if (existingCoverage.has(pinId)) {
+          continue;
+        }
+
+        try {
+          await addTagToPin({ pinId: pinId as any, tagId: tagId as any });
+        } catch {
+          // Continue to remaining pins if one operation fails.
+        }
+      }
+      setNewTagName("");
+      setSelectedColor("#3b82f6");
+    } finally {
+      setIsBulkActionPending(false);
+    }
+  };
+
+  const confirmClearBulkTags = () => {
+    if (!selectedPinIds.length || !selectedTagLinkCount || isBulkActionPending) return;
+
+    const linksToRemove: Array<{ pinId: string; tagId: string }> = [];
+    for (const [tagId, coveredPinIds] of selectedTagCoverage.entries()) {
+      for (const pinId of coveredPinIds) {
+        linksToRemove.push({ pinId, tagId });
+      }
+    }
+
+    if (!linksToRemove.length) return;
+
+    Alert.alert(
+      "Clear Tags",
+      `Remove all tags from ${selectedPinIds.length} selected pins?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear Tags",
+          style: "destructive",
+          onPress: async () => {
+            setIsBulkActionPending(true);
+            let removedCount = 0;
+
+            for (const link of linksToRemove) {
+              try {
+                await removeTagFromPin({ pinId: link.pinId as any, tagId: link.tagId as any });
+                removedCount += 1;
+              } catch {
+                // Continue clearing other links if one operation fails.
+              }
+            }
+
+            setIsBulkActionPending(false);
+            Alert.alert("Clear Tags Complete", `${removedCount} tag links removed.`);
+          },
+        },
+      ]
+    );
+  };
+
+  const confirmDeleteSelectedPins = () => {
+    if (!selectedPinIds.length) return;
+
+    Alert.alert(
+      "Delete Selected Pins",
+      `Delete ${selectedPinIds.length} selected pins? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setIsBulkActionPending(true);
+            let deletedCount = 0;
+
+            for (const pinId of selectedPinIds) {
+              try {
+                await deletePin({ pinId: pinId as any });
+                deletedCount += 1;
+              } catch {
+                // Ignore and continue deleting remaining selected pins.
+              }
+            }
+
+            setIsBulkActionPending(false);
+            setSelectedPinIds([]);
+            setIsMultiSelectMode(false);
+
+            Alert.alert("Bulk Delete Complete", `${deletedCount} pins deleted.`);
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -219,6 +434,8 @@ export default function MapScreen() {
   }, [params.lat, params.lng, params.pinId, params.openPin, pins]);
 
   const handleLongPress = (e: LongPressEvent) => {
+    if (isMultiSelectMode) return;
+
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setSelectedLat(latitude);
     setSelectedLng(longitude);
@@ -324,6 +541,8 @@ export default function MapScreen() {
   };
 
   const handleSelectPlace = (place: any) => {
+    if (isMultiSelectMode) return;
+
     const mainText = place.name || place.display_name.split(',')[0];
     const lat = parseFloat(place.lat);
     const lng = parseFloat(place.lon);
@@ -500,16 +719,44 @@ export default function MapScreen() {
             key={pin._id}
             pin={pin}
             theme={theme}
-            isSelected={selectedPin?._id === pin._id}
+            isSelected={
+              isMultiSelectMode
+                ? selectedPinIds.includes(String(pin._id))
+                : selectedPin?._id === pin._id
+            }
             onPinPress={(e: any) => {
               e.stopPropagation();
-              handleOpenPin(pin);
+              if (isMultiSelectMode) {
+                togglePinSelection(pin);
+              } else {
+                handleOpenPin(pin);
+              }
             }}
           />
         ))}
       </MapView>
 
       <View style={[styles.searchOverlay, { top: insets.top + 10 }]}>
+        <View style={styles.mapActionsRow}>
+          {!isMultiSelectMode ? (
+            <TouchableOpacity
+              style={[styles.multiSelectToggleButton, { backgroundColor: adwaitaBlue }]}
+              onPress={enterMultiSelectMode}
+            >
+              <MaterialIcons name="checklist" size={16} color="#fff" />
+              <Text style={styles.multiSelectToggleText}>Multi-select</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.multiSelectToggleButton, { backgroundColor: '#111827' }]}
+              onPress={exitMultiSelectMode}
+            >
+              <MaterialIcons name="close" size={16} color="#fff" />
+              <Text style={styles.multiSelectToggleText}>Exit Multi-select</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <View style={[styles.searchContainer, { backgroundColor: theme.background, shadowColor: colorScheme === 'dark' ? '#000' : '#888' }]}>
           {isSearching ? (
             <ActivityIndicator size="small" color={adwaitaBlue} style={styles.searchIcon} />
@@ -556,6 +803,197 @@ export default function MapScreen() {
         )}
       </View>
 
+      {isMultiSelectMode && (
+        <View style={[styles.multiSelectActionBar, { bottom: insets.bottom + 18, backgroundColor: colorScheme === 'dark' ? '#171717' : '#ffffff', borderColor: colorScheme === 'dark' ? '#333' : '#d1d5db' }]}>
+          <Text style={[styles.multiSelectCountText, { color: theme.text }]}>{selectedPinsCount} selected</Text>
+
+          {selectedPinsForCarousel.length > 0 && (
+            <View style={styles.selectedPinsCarouselWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.selectedPinsCarouselContent}
+              >
+                {selectedPinsForCarousel.map((pin: any) => (
+                  <View
+                    key={String(pin._id)}
+                    style={[
+                      styles.selectedPinThumb,
+                      {
+                        borderColor: colorScheme === 'dark' ? '#3f3f46' : '#cbd5e1',
+                        backgroundColor: colorScheme === 'dark' ? '#27272a' : '#f8fafc',
+                      },
+                    ]}
+                  >
+                    {pin.imageUrl ? (
+                      <Image source={{ uri: pin.imageUrl }} style={styles.selectedPinThumbImage} />
+                    ) : (
+                      <View style={styles.selectedPinThumbFallback}>
+                        <Text style={[styles.selectedPinThumbFallbackText, { color: theme.text }]}>
+                          {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
+                        </Text>
+                      </View>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.selectedPinRemoveButton}
+                      onPress={() => togglePinSelection(pin)}
+                      hitSlop={{ top: 8, left: 8, right: 8, bottom: 8 }}
+                    >
+                      <MaterialIcons name="close" size={12} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          <View style={styles.multiSelectButtonsRow}>
+            <TouchableOpacity
+              style={[styles.bulkActionButton, { backgroundColor: selectedPinsCount > 0 ? '#2563eb' : '#94a3b8' }]}
+              disabled={selectedPinsCount === 0 || isBulkActionPending}
+              onPress={() => setIsBulkTagModalOpen(true)}
+            >
+              <Text style={styles.bulkActionButtonText}>Edit Tags</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.bulkActionButton, { backgroundColor: selectedPinsCount > 0 ? '#b91c1c' : '#94a3b8' }]}
+              disabled={selectedPinsCount === 0 || isBulkActionPending}
+              onPress={confirmDeleteSelectedPins}
+            >
+              <Text style={styles.bulkActionButtonText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+
+          {isBulkActionPending && <ActivityIndicator size="small" color={adwaitaBlue} style={{ marginTop: 8 }} />}
+        </View>
+      )}
+
+      <Modal
+        visible={isBulkTagModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsBulkTagModalOpen(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsBulkTagModalOpen(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text>
+              <TouchableOpacity onPress={() => setIsBulkTagModalOpen(false)}>
+                <Text style={{ color: theme.text, fontSize: 24 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ padding: 16 }}>
+              <TouchableOpacity
+                style={[
+                  styles.clearTagsButton,
+                  {
+                    marginTop: 0,
+                    marginBottom: 16,
+                    backgroundColor: colorScheme === 'dark' ? '#3a1f1f' : '#fee2e2',
+                    borderColor: colorScheme === 'dark' ? '#7f1d1d' : '#fca5a5',
+                    opacity: selectedTagLinkCount > 0 ? 1 : 0.5,
+                  },
+                ]}
+                onPress={confirmClearBulkTags}
+                disabled={isBulkActionPending || selectedPinsCount === 0 || selectedTagLinkCount === 0}
+              >
+                <Text style={styles.clearTagsButtonText}>Clear Tags</Text>
+              </TouchableOpacity>
+
+              {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
+                <View key={category} style={{ marginBottom: 20 }}>
+                  <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
+                  <View style={styles.tagOptionRow}>
+                    {tags.map((tag: any) => {
+                      const coveredPinIds = Array.from(selectedTagCoverage.get(String(tag._id)) || []);
+                      const isSelectedAny = coveredPinIds.length > 0;
+                      const isSelectedAll = coveredPinIds.length === selectedPinsCount && selectedPinsCount > 0;
+
+                      return (
+                        <TouchableOpacity
+                          key={String(tag._id)}
+                          onPress={() => toggleBulkTagSelection(tag)}
+                          disabled={isBulkActionPending || selectedPinsCount === 0}
+                          style={[
+                            styles.tagOption,
+                            {
+                              backgroundColor: isSelectedAny ? (tag.color || '#3b82f6') : (colorScheme === 'dark' ? '#333' : '#e5e7eb'),
+                              borderWidth: 1,
+                              borderColor: isSelectedAll ? '#111827' : (colorScheme === 'dark' ? '#444' : '#ccc'),
+                              opacity: selectedPinsCount === 0 ? 0.5 : 1,
+                            },
+                          ]}
+                        >
+                          <Text style={{ color: isSelectedAny ? '#fff' : theme.text, fontWeight: '600' }}>{tag.name}</Text>
+
+                          {coveredPinIds.length > 0 && (
+                            <View style={styles.tagPinPreviewRow}>
+                              {coveredPinIds.slice(0, 5).map((pinId) => {
+                                const pin = selectedPinsById.get(String(pinId));
+                                if (!pin) return null;
+
+                                return (
+                                  <View key={`${String(tag._id)}-${String(pinId)}`} style={styles.tagPinPreviewThumb}>
+                                    {pin.imageUrl ? (
+                                      <Image source={{ uri: pin.imageUrl }} style={styles.tagPinPreviewImage} />
+                                    ) : (
+                                      <View style={styles.tagPinPreviewFallback}>
+                                        <Text style={styles.tagPinPreviewFallbackText}>
+                                          {pin.title ? pin.title.charAt(0).toUpperCase() : '?'}
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                );
+                              })}
+                              {coveredPinIds.length > 5 && (
+                                <Text style={styles.tagPinPreviewMoreText}>+{coveredPinIds.length - 5}</Text>
+                              )}
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+
+              <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                <Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
+                <TextInput
+                  value={newTagName}
+                  onChangeText={setNewTagName}
+                  placeholder="Tag name..."
+                  placeholderTextColor="#666"
+                  style={[styles.newTagInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}
+                  editable={!isBulkActionPending}
+                />
+                <View style={styles.colorRow}>
+                  {["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map((color) => (
+                    <TouchableOpacity
+                      key={color}
+                      onPress={() => setSelectedColor(color)}
+                      style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]}
+                      disabled={isBulkActionPending}
+                    />
+                  ))}
+                </View>
+                <TouchableOpacity style={styles.createTagButton} onPress={handleCreateBulkTag} disabled={isBulkActionPending || selectedPinsCount === 0}>
+                  <Text style={styles.createTagButtonText}>Create & Link Tag</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={[styles.saveButton, { marginTop: 20, marginBottom: 40, width: '100%' }]} onPress={() => setIsBulkTagModalOpen(false)}>
+                <Text style={styles.saveButtonText}>Done</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <AddPinSheet
         isOpen={isSheetOpen}
         onClose={() => setIsSheetOpen(false)}
@@ -578,7 +1016,7 @@ export default function MapScreen() {
       />
 
       <ViewEditPinSheet
-        isOpen={isViewSheetOpen}
+        isOpen={isMultiSelectMode ? false : isViewSheetOpen}
         onClose={() => {
           setIsViewSheetOpen(false);
           setSelectedPin(null);
@@ -619,11 +1057,49 @@ const lightMapStyle = [
 
 const styles = StyleSheet.create({
   searchOverlay: { position: 'absolute', left: 20, right: 20, zIndex: 10 },
+  mapActionsRow: { alignItems: 'flex-end', marginBottom: 8 },
+  multiSelectToggleButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
+  multiSelectToggleText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16 },
   predictionsContainer: { borderRadius: 16, marginTop: 8, elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
   predictionItem: { padding: 14, borderBottomWidth: 1 },
   predictionMainText: { fontSize: 16, fontWeight: '600' },
-  predictionSubText: { fontSize: 12, marginTop: 2 }
+  predictionSubText: { fontSize: 12, marginTop: 2 },
+  multiSelectActionBar: { position: 'absolute', left: 20, right: 20, borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 12, zIndex: 15, elevation: 8 },
+  multiSelectCountText: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  selectedPinsCarouselWrap: { marginBottom: 10 },
+  selectedPinsCarouselContent: { gap: 8, paddingRight: 2 },
+  selectedPinThumb: { width: 56, height: 56, borderRadius: 10, borderWidth: 1, overflow: 'hidden' },
+  selectedPinThumbImage: { width: '100%', height: '100%' },
+  selectedPinThumbFallback: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  selectedPinThumbFallbackText: { fontSize: 20, fontWeight: '700' },
+  selectedPinRemoveButton: { position: 'absolute', top: 4, right: 4, width: 16, height: 16, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center' },
+  multiSelectButtonsRow: { flexDirection: 'row', gap: 10 },
+  bulkActionButton: { flex: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  bulkActionButtonText: { color: '#fff', fontWeight: '700' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '85%', minHeight: '50%' },
+  modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: 18, fontWeight: '600' },
+  categoryTitle: { fontSize: 14, fontWeight: '600', marginBottom: 10 },
+  tagOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, minWidth: 96 },
+  tagPinPreviewRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 },
+  tagPinPreviewThumb: { width: 16, height: 16, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.65)' },
+  tagPinPreviewImage: { width: '100%', height: '100%' },
+  tagPinPreviewFallback: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' },
+  tagPinPreviewFallbackText: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  tagPinPreviewMoreText: { color: '#fff', fontSize: 10, fontWeight: '700', marginLeft: 2 },
+  createTagSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 1 },
+  newTagInput: { borderWidth: 1, padding: 10, borderRadius: 6, marginBottom: 12 },
+  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  colorCircle: { width: 40, height: 40, borderRadius: 20 },
+  createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  clearTagsButton: { marginTop: 20, borderWidth: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  clearTagsButtonText: { color: '#dc2626', fontWeight: '700', fontSize: 14 },
+  saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center' },
+  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' }
 });

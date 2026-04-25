@@ -81,6 +81,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], near
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
+  const [isClearingTags, setIsClearingTags] = useState(false);
 
   const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
     const category = tag.category || "Other";
@@ -113,6 +114,35 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], near
       await addTagToPin({ pinId: targetPin._id, tagId: id });
       setNewTagName(""); setSelectedColor("#3b82f6");
     } catch (err: any) { Alert.alert("Error", err?.message); }
+  };
+
+  
+  const handleClearAllTags = () => {
+    if (!targetPin || !pinTags?.length || isClearingTags) return;
+
+    Alert.alert(
+      "Clear all tags?",
+      "This will remove every tag from this pin.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear Tags",
+          style: "destructive",
+          onPress: async () => {
+            setIsClearingTags(true);
+            try {
+              await Promise.allSettled(
+                pinTags.map((tag: any) =>
+                  removeTagFromPin({ pinId: targetPin._id, tagId: tag._id })
+                )
+              );
+            } finally {
+              setIsClearingTags(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleUpdateCaption = (text: string) => {
@@ -352,6 +382,20 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], near
           <TouchableWithoutFeedback><View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text><TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity></View>
             <ScrollView style={{ padding: 16 }}>
+              <TouchableOpacity
+                style={[
+                  styles.clearTagsButton,
+                  {
+                    backgroundColor: colorScheme === 'dark' ? '#3a1f1f' : '#fee2e2',
+                    borderColor: colorScheme === 'dark' ? '#7f1d1d' : '#fca5a5',
+                    opacity: pinTags?.length ? 1 : 0.5,
+                  },
+                ]}
+                onPress={handleClearAllTags}
+                disabled={!pinTags?.length || isClearingTags}
+              >
+                <Text style={styles.clearTagsButtonText}>{isClearingTags ? 'Clearing...' : 'Clear Tags'}</Text>
+              </TouchableOpacity>
               {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
                 <View key={category} style={{ marginBottom: 20 }}><Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
                   <View style={styles.tagOptionRow}>{tags.map((tag: any) => {
@@ -434,4 +478,6 @@ const styles = StyleSheet.create({
   colorCircle: { width: 40, height: 40, borderRadius: 20 },
   createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  clearTagsButton: { marginTop: 10, marginBottom: 20, borderWidth: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', paddingBottom: 10 },
+  clearTagsButtonText: { color: '#dc2626', fontWeight: '700', fontSize: 14, paddingBottom: 2 },
 });
