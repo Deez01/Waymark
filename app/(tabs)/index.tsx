@@ -434,10 +434,14 @@ export default function MapScreen() {
         showsMyLocationButton={true}
         mapPadding={{ top: 100, right: 10, bottom: 35, left: 10 }}
         onLongPress={handleLongPress}
-        onPress={() => Keyboard.dismiss()}
+        onPress={() => {
+          Keyboard.dismiss();
+          setPredictions([]); // FIXED: Hides search results when clicking map
+        }}
         onRegionChangeComplete={(region) => setCurrentRegion(region)}
         onPanDrag={() => {
           Keyboard.dismiss();
+          setPredictions([]); // FIXED: Hides search results when moving map
           if (isSheetOpen || isViewSheetOpen) {
             setMinimizeTrigger(prev => prev + 1);
           }
@@ -482,11 +486,7 @@ export default function MapScreen() {
             onSubmitEditing={performSearch}
             blurOnSubmit={false}
             returnKeyType="search"
-            onFocus={() => {
-              if (isViewSheetOpen) {
-                setMinimizeTrigger(prev => prev + 1);
-              }
-            }}
+          // FIXED: Removed the onFocus minimizeTrigger that was causing the keyboard to close instantly
           />
 
           {searchQuery.length > 0 && (
