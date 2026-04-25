@@ -1,6 +1,6 @@
 // components/AddPinSheet.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, Dimensions, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Animated, TouchableWithoutFeedback } from 'react-native';
 import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
 import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useMutation, useQuery } from 'convex/react';
@@ -37,22 +37,30 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
+  const isMinimizing = useRef(false);
 
-  // --- DYNAMIC MAX HEIGHT CALCULATION ---
   const maxSheetHeight = useMemo(() => {
-    const topReserved = insets.top + 70; // Notification + Search Bar + Gaps
-    const tabHeight = screenHeight * 0.1; // 10% height from layout.tsx
+    const topReserved = insets.top + 70;
+    const tabHeight = screenHeight * 0.1;
     const bottomReserved = insets.bottom + tabHeight;
     return screenHeight - topReserved - bottomReserved;
   }, [insets.top, insets.bottom]);
 
-  // --- v5 DYNAMIC SNAP POINTS ---
-  // We provide the bottom and top points. 
-  // enableDynamicSizing will automatically find the content size and insert it as the middle point.
   const snapPoints = useMemo(() => ['4%', maxSheetHeight], [maxSheetHeight]);
-
   const [sheetIndex, setSheetIndex] = useState(0);
   const [isSheetInputFocused, setIsSheetInputFocused] = useState(false);
+
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  const showToast = () => {
+    setToastVisible(true);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start(() => setToastVisible(false));
+  };
 
   const createPin = useMutation(api.pins.createPin);
   const generateUploadUrl = useMutation(api.pins.generateUploadUrl);
@@ -94,7 +102,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   );
 
   const programmaticSnapRef = useRef(false);
-
   const snapTo = (index: number) => {
     programmaticSnapRef.current = true;
     bottomSheetRef.current?.snapToIndex(index);
@@ -104,28 +111,35 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   useEffect(() => {
     const keyboardEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const keyboardListener = Keyboard.addListener(keyboardEvent, () => {
-      if (isOpen && activeGalleryIndex === null) {
-        snapTo(1); // Back to content size
-        setIsSheetInputFocused(false);
+      if (isOpen && activeGalleryIndex === null && !isMinimizing.current) {
+        snapTo(1);
       }
+      setIsSheetInputFocused(false);
     });
     return () => keyboardListener.remove();
   }, [isOpen, activeGalleryIndex]);
 
   useEffect(() => {
-    if (minimizeTrigger && minimizeTrigger > 0 && isOpen) { Keyboard.dismiss(); snapTo(0); }
+    if (minimizeTrigger && minimizeTrigger > 0 && isOpen) {
+      isMinimizing.current = true;
+      Keyboard.dismiss();
+      bottomSheetRef.current?.snapToIndex(0);
+      setTimeout(() => { isMinimizing.current = false; }, 800);
+    }
   }, [minimizeTrigger, isOpen]);
 
   useEffect(() => {
     const backAction = () => {
       if (!isOpen) return false;
       if (activeGalleryIndex !== null) { setActiveGalleryIndex(null); return true; }
+      if (showTagModal) { setShowTagModal(false); return true; }
+      if (showLandmarkModal) { setShowLandmarkModal(false); return true; }
       if (sheetIndex > 0) { snapTo(0); return true; }
       return false;
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [sheetIndex, activeGalleryIndex, isOpen]);
+  }, [sheetIndex, activeGalleryIndex, isOpen, showTagModal, showLandmarkModal]);
 
   useEffect(() => {
     if (isOpen) {
@@ -141,7 +155,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       Keyboard.dismiss();
       setTitle(''); setDescription(''); setAddress(''); setSelectedTags([]);
       setSelectedImages([]); setThumbnailStorageId(null); setActiveGalleryIndex(null);
-      setLat(null); setLng(null); setSelectedLandmark(null); setLandmarkSearch(""); setShowLandmarkModal(false);
+      setLat(null); setLng(null); setSelectedLandmark(null); setLandmarkSearch("");
+      setShowLandmarkModal(false); setShowTagModal(false);
     }
   }, [isOpen, initialLat, initialLng, initialTitle, initialAddress, openTrigger]);
 
@@ -160,12 +175,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     await fetchAddress(loc.coords.latitude, loc.coords.longitude);
   };
 
-  const uploadImageUri = async (uri: string, mimeType?: string | null) => {
+  const uploadImageUri = async (uri: string) => {
     const uploadUrl = await generateUploadUrl();
     const response = await fetch(uri);
-    const uploadResult = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': mimeType || 'image/jpeg' }, body: await response.blob() });
-    const { storageId } = await uploadResult.json();
-    return storageId as string;
+    const result = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: await response.blob() });
+    const { storageId } = await result.json();
+    return storageId;
   };
 
   const handleTakePhoto = async () => {
@@ -177,8 +192,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     setIsUploadingImages(true);
     try {
       const proc = await compressPinImage(res.assets[0].uri, selectedImages.length === 0);
-      const sid = await uploadImageUri(proc.fullUri, 'image/jpeg');
-      if (proc.thumbnailUri) setThumbnailStorageId(await uploadImageUri(proc.thumbnailUri, 'image/jpeg'));
+      const sid = await uploadImageUri(proc.fullUri);
+      if (proc.thumbnailUri) setThumbnailStorageId(await uploadImageUri(proc.thumbnailUri));
       setSelectedImages(prev => [...prev, { storageId: sid, uri: proc.fullUri, caption: '' }]);
     } finally { setIsUploadingImages(false); }
   };
@@ -194,11 +209,22 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       let isFirst = selectedImages.length === 0;
       for (const asset of res.assets) {
         const proc = await compressPinImage(asset.uri, isFirst);
-        const sid = await uploadImageUri(proc.fullUri, 'image/jpeg');
-        if (proc.thumbnailUri) { setThumbnailStorageId(await uploadImageUri(proc.thumbnailUri, 'image/jpeg')); isFirst = false; }
+        const sid = await uploadImageUri(proc.fullUri);
+        if (proc.thumbnailUri) { setThumbnailStorageId(await uploadImageUri(proc.thumbnailUri)); isFirst = false; }
         setSelectedImages(prev => [...prev, { storageId: sid, uri: proc.fullUri, caption: '' }]);
       }
     } finally { setIsUploadingImages(false); }
+  };
+
+  const toggleTagSelection = (tag: any) => setSelectedTags(prev => prev.some(t => t._id === tag._id) ? prev.filter(t => t._id !== tag._id) : [...prev, tag]);
+
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) return;
+    try {
+      const id = await createTag({ name: newTagName, color: selectedColor });
+      setSelectedTags(prev => [...prev, { _id: id, name: newTagName, color: selectedColor }]);
+      setNewTagName(""); setSelectedColor("#3b82f6");
+    } catch (err: any) { Alert.alert("Error", err?.message); }
   };
 
   const handleSelectLandmark = (landmark: any) => {
@@ -237,7 +263,7 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       ref={bottomSheetRef}
       index={-1}
       snapPoints={snapPoints}
-      enableDynamicSizing={true} // Replaces the removed hook logic
+      enableDynamicSizing={true}
       enablePanDownToClose
       onClose={onClose}
       onChange={setSheetIndex}
@@ -286,27 +312,39 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
           </View>
 
           <View style={styles.metaRow}>
-            <View style={styles.metaButtonsColumn}>
-              <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}>
-                <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-                <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text>
+            <View style={styles.tagTriggerContainer}>
+              {selectedTags.length > 0 ? (
+                <View style={styles.tagFlow}>
+                  {selectedTags.map(tag => (
+                    <TouchableOpacity key={tag._id} onPress={() => setShowTagModal(true)}>
+                      <View style={[styles.selectedTagPill, { backgroundColor: tag.color || '#3b82f6' }]}>
+                        <Text style={styles.selectedTagText}>{tag.name}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity onPress={() => setShowTagModal(true)} style={styles.smallAddTagButton}>
+                    <IconSymbol name="add" size={18} color={theme.text} />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}>
+                  <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+                  <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.addressAndLandmarkColumn}>
+              <TouchableOpacity style={styles.addressContainer} onPress={async () => { if (address) { await Clipboard.setStringAsync(address); showToast(); } }}>
+                <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} style={{ marginTop: 2 }} />
+                <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.metaButton, { marginTop: 10 }]} onPress={() => setShowLandmarkModal(true)}>
-                <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
+              <TouchableOpacity style={[styles.metaButton, { marginTop: 8, alignSelf: 'flex-end' }]} onPress={() => setShowLandmarkModal(true)}>
+                <IconSymbol name="landscape" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
                 <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Landmark +</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.addressContainer} onPress={async () => { if (address) { await Clipboard.setStringAsync(address); Alert.alert("Copied", "Address copied!"); } }}>
-              <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-              <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{address || "Locating..."}</Text>
-            </TouchableOpacity>
           </View>
-
-          {selectedTags.length > 0 && (
-            <View style={styles.selectedTagsContainer}>
-              {selectedTags.map(tag => (<View key={tag._id} style={[styles.selectedTagPill, { backgroundColor: tag.color || '#3b82f6' }]}><Text style={styles.selectedTagText}>{tag.name}</Text></View>))}
-            </View>
-          )}
 
           <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
             <BottomSheetTextInput
@@ -326,7 +364,96 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         </View>
       </BottomSheetScrollView>
 
-      {/* MODALS (Landmark, Tag, etc. code same as before) */}
+      {toastVisible && (
+        <Animated.View style={[styles.toastContainer, { opacity: toastOpacity, bottom: insets.bottom + 80 }]}>
+          <Text style={styles.toastText}>Address copied!</Text>
+        </Animated.View>
+      )}
+
+      {/* LANDMARK MODAL */}
+      <Modal visible={showLandmarkModal} animationType="slide" transparent onRequestClose={() => setShowLandmarkModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowLandmarkModal(false)}>
+          <TouchableWithoutFeedback>
+            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Choose Landmark</Text>
+                <TouchableOpacity onPress={() => setShowLandmarkModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity>
+              </View>
+              <View style={{ padding: 16 }}>
+                <BottomSheetTextInput value={landmarkSearch} onChangeText={setLandmarkSearch} placeholder="Search landmarks..." placeholderTextColor={colorScheme === 'dark' ? '#888' : '#666'} style={[styles.newTagInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
+                <ScrollView style={{ maxHeight: 380 }}>
+                  {filteredLandmarks.map((l) => (
+                    <TouchableOpacity key={l.key} onPress={() => handleSelectLandmark(l)} style={[styles.predictionItem, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: theme.text, fontWeight: '600' }}>{l.name}</Text>
+                        <Text style={{ color: colorScheme === 'dark' ? '#888' : '#666', fontSize: 12 }}>{l.address}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* TAG MODAL */}
+      <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTagModal(false)}>
+          <TouchableWithoutFeedback>
+            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Add Tags</Text>
+                <TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity>
+              </View>
+              <ScrollView style={{ padding: 16 }}>
+                {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
+                  <View key={category} style={{ marginBottom: 20 }}>
+                    <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
+                    <View style={styles.tagOptionRow}>
+                      {tags && tags.map((tag: any) => {
+                        const isSelected = selectedTags.some(t => t._id === tag._id);
+                        return (<TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: isSelected ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb"), borderWidth: 1, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}><Text style={[styles.tagOptionText, { color: isSelected ? "#fff" : theme.text }]}>{tag.name}{isSelected ? " ✓" : ""}</Text></TouchableOpacity>);
+                      })}
+                    </View>
+                  </View>
+                ))}
+                <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                  <Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
+                  <BottomSheetTextInput value={newTagName} onChangeText={setNewTagName} placeholder="Tag name..." placeholderTextColor={colorScheme === 'dark' ? '#888' : '#666'} style={[styles.newTagInput, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#fff', color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
+                  <View style={styles.colorRow}>
+                    {["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map(color => (<TouchableOpacity key={color} onPress={() => setSelectedColor(color)} style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]} />))}
+                  </View>
+                  <TouchableOpacity style={styles.createTagButton} onPress={handleCreateTag}><Text style={styles.createTagButtonText}>Create Tag</Text></TouchableOpacity>
+                </View>
+                <TouchableOpacity style={[styles.saveButton, { marginTop: 20, marginBottom: 40, width: '100%' }]} onPress={() => setShowTagModal(false)}><Text style={styles.saveButtonText}>Done</Text></TouchableOpacity>
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* GALLERY VIEW MODAL */}
+      <Modal visible={activeGalleryIndex !== null} transparent animationType="fade" onRequestClose={() => setActiveGalleryIndex(null)}>
+        <View style={styles.galleryOverlay}>
+          <TouchableOpacity style={[styles.galleryCloseButton, { top: insets.top + 10 }]} onPress={() => setActiveGalleryIndex(null)}><Text style={styles.galleryCloseText}>✕</Text></TouchableOpacity>
+          {activeGalleryIndex !== null && selectedImages[activeGalleryIndex] && (
+            <View style={styles.galleryContent}>
+              <Image source={{ uri: selectedImages[activeGalleryIndex].uri }} style={styles.galleryMainImage} contentFit="contain" />
+              <View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}>
+                <BottomSheetTextInput
+                  style={styles.captionInput}
+                  placeholder="Add a caption..."
+                  placeholderTextColor="#a1a1aa"
+                  value={selectedImages[activeGalleryIndex].caption}
+                  onChangeText={(t) => { const i = [...selectedImages]; i[activeGalleryIndex].caption = t; setSelectedImages(i); }}
+                  multiline
+                />
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </BottomSheet>
   );
 }
@@ -346,19 +473,45 @@ const styles = StyleSheet.create({
   titleInput: { fontSize: 24, fontWeight: '700', flex: 1, marginRight: 10 },
   dateText: { fontSize: 14 },
   metaRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 },
-  metaButtonsColumn: { flexDirection: 'column' },
+  tagTriggerContainer: { flex: 1, marginRight: 10 },
+  tagFlow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, alignItems: 'center' },
+  smallAddTagButton: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   metaButton: { flexDirection: 'row', alignItems: 'center' },
   metaText: { marginLeft: 4, fontSize: 14 },
-  addressContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', marginLeft: 15 },
-  addressText: { marginLeft: 4, fontSize: 14, textAlign: 'right', flexShrink: 1 },
-  selectedTagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 },
-  selectedTagPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  selectedTagText: { color: '#fff', fontSize: 12, fontWeight: '500' },
+  addressAndLandmarkColumn: { maxWidth: '65%', alignItems: 'flex-end', marginLeft: 15 },
+  addressContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end' },
+  addressText: { marginLeft: 4, fontSize: 14, textAlign: 'left', flexShrink: 1 },
+  selectedTagPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  selectedTagText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   notesAndSaveRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 10, marginBottom: 20 },
   notesAndSaveRowExpanded: { flex: 1 },
   notesInput: { flex: 1, fontSize: 14, paddingVertical: 8, marginRight: 10, maxHeight: 60 },
   notesInputExpanded: { flex: 1, maxHeight: '100%', textAlignVertical: 'top' },
-  saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20 },
+  saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center' },
   saveButtonDisabled: { backgroundColor: '#ccc' },
   saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  toastContainer: { position: 'absolute', left: '20%', right: '20%', backgroundColor: 'rgba(0,0,0,0.8)', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 25, alignItems: 'center', zIndex: 2000 },
+  toastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "85%", minHeight: "50%" },
+  modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  modalTitle: { fontSize: 18, fontWeight: "600" },
+  categoryTitle: { fontSize: 14, fontWeight: "600", marginBottom: 10 },
+  tagOptionRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
+  tagOptionText: { fontSize: 13, fontWeight: "500" },
+  createTagSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 1 },
+  newTagInput: { borderWidth: 1, padding: 10, borderRadius: 6, marginBottom: 12 },
+  colorRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  colorCircle: { width: 40, height: 40, borderRadius: 20 },
+  createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  galleryOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.95)', zIndex: 999 },
+  galleryCloseButton: { position: 'absolute', right: 20, zIndex: 1000, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20 },
+  galleryCloseText: { color: '#fff', fontSize: 28, fontWeight: '600' },
+  galleryContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  galleryMainImage: { width: '100%', height: '100%' },
+  captionInputContainer: { position: 'absolute', width: '90%', alignSelf: 'center', backgroundColor: 'rgba(28, 28, 30, 0.85)', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)', zIndex: 1000 },
+  captionInput: { color: '#ffffff', fontSize: 15, maxHeight: 100 },
+  predictionItem: { paddingVertical: 12, borderBottomWidth: 1 },
 });

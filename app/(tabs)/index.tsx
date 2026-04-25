@@ -354,7 +354,7 @@ export default function MapScreen() {
 
     const OFFSET_RADIUS = 0.0005;
 
-    return pins.map((pin) => {
+    return pins.map((pin: any) => {
       const groupKey =
         pin?.isLandmarkMemory && pin?.landmarkKey
           ? `landmark:${pin.landmarkKey}`
@@ -498,7 +498,7 @@ export default function MapScreen() {
 
         {predictions.length > 0 && (
           <View style={[styles.predictionsContainer, { backgroundColor: theme.background }]}>
-            {predictions.map((p, index) => (
+            {predictions.map((p: any, index: number) => (
               <TouchableOpacity
                 key={p.place_id || index}
                 style={[styles.predictionItem, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#f0f0f0' }]}
