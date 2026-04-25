@@ -737,26 +737,6 @@ export default function MapScreen() {
       </MapView>
 
       <View style={[styles.searchOverlay, { top: insets.top + 10 }]}>
-        <View style={styles.mapActionsRow}>
-          {!isMultiSelectMode ? (
-            <TouchableOpacity
-              style={[styles.multiSelectToggleButton, { backgroundColor: adwaitaBlue }]}
-              onPress={enterMultiSelectMode}
-            >
-              <MaterialIcons name="checklist" size={16} color="#fff" />
-              <Text style={styles.multiSelectToggleText}>Multi-select</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.multiSelectToggleButton, { backgroundColor: '#111827' }]}
-              onPress={exitMultiSelectMode}
-            >
-              <MaterialIcons name="close" size={16} color="#fff" />
-              <Text style={styles.multiSelectToggleText}>Exit Multi-select</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
         <View style={[styles.searchContainer, { backgroundColor: theme.background, shadowColor: colorScheme === 'dark' ? '#000' : '#888' }]}>
           {isSearching ? (
             <ActivityIndicator size="small" color={adwaitaBlue} style={styles.searchIcon} />
@@ -779,6 +759,26 @@ export default function MapScreen() {
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => { setSearchQuery(''); setPredictions([]); }}>
               <MaterialIcons name="close" size={20} color={adwaitaBlue} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.mapActionsRow}>
+          {!isMultiSelectMode ? (
+            <TouchableOpacity
+              style={[styles.multiSelectToggleButton, { backgroundColor: adwaitaBlue }]}
+              onPress={enterMultiSelectMode}
+            >
+              <MaterialIcons name="checklist" size={16} color="#fff" />
+              <Text style={styles.multiSelectToggleText}>Multi-select</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.multiSelectToggleButton, { backgroundColor: '#111827' }]}
+              onPress={exitMultiSelectMode}
+            >
+              <MaterialIcons name="close" size={16} color="#fff" />
+              <Text style={styles.multiSelectToggleText}>Exit Multi-select</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1057,7 +1057,7 @@ const lightMapStyle = [
 
 const styles = StyleSheet.create({
   searchOverlay: { position: 'absolute', left: 20, right: 20, zIndex: 10 },
-  mapActionsRow: { alignItems: 'flex-end', marginBottom: 8 },
+  mapActionsRow: { alignItems: 'flex-start', marginTop: 8, marginBottom: 8 },
   multiSelectToggleButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
   multiSelectToggleText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
