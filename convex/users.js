@@ -99,3 +99,74 @@ export const completeProfile = mutation({
     await ctx.db.patch(userId, updates);
   },
 });
+
+export const updateProfile = mutation({
+  args: {
+    username: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    profilePicture: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError("Not authenicated.");
+    }
+
+    const updates = {};
+
+    if (args.username !== undefined) {
+      const username = args.username.trim().toLowerCase();
+      if (!username) {
+        throw new ConvexError("Username cannot be empty.");
+      }
+
+      // check if taken
+      const existing = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .first();
+
+        if (existing && existing._id !== userId) {
+          throw new ConvexError("Username already taken.")
+        }
+
+        updates.username = username;
+    }
+
+    if (args.bio !== undefined) {
+      updates.bio = args.bio.trim();
+    }
+
+    if (args.profilePicture !== undefined) {
+      updates.profilePicture = args.profilePicture;
+    }
+
+    await ctx.db.patch(userId, updates);
+  },
+});
+
+export const generateUploadUrl = mutation(async (ctx) => {
+  return await ctx.storage.generateUploadUrl();
+});
+
+export const updateProfilePicture = mutation({
+  args: { storageId: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    if (!userId) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    await ctx.db.patch(userId, {
+      profilePicture: args.storageId,
+    });
+  },
+});
+
+export const getProfilePictureUrl = query({
+  args: { storageId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});

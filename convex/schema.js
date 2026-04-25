@@ -13,6 +13,8 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     age: v.optional(v.number()),
     ethnicity: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    profilePicture: v.optional(v.string()),
     profileComplete: v.optional(v.boolean()),
   })
     .index("by_email", ["email"])
@@ -149,16 +151,10 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_badgeKey", ["userId", "badgeKey"]),
   
-  memories: defineTable({
-    title: v.string(),
-    description: v.string(),
-    imageUrl: v.optional(v.string()),
-    visibility: v.union(
-      v.literal("Public"),
-      v.literal("Private")
-    ),
-    userId: v.string(), // Owner of the memory
-    createdAt: v.number(),
+  likes: defineTable({
+    userId: v.id("users"),
+    memoryId: v.id("memories")
   })
-    .index("by_user", ["userId"]),
+  .index("by_memory", ["memoryId"])
+  .index("by_user_memory", ["userId", "memoryId"]),
 });
