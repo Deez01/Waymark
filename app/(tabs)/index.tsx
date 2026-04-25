@@ -3,13 +3,8 @@ import { api } from "@/convex/_generated/api";
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from "convex/react";
 import { router, useLocalSearchParams } from "expo-router";
-<<<<<<< HEAD
-import { useEffect, useRef, useState } from "react";
-import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-=======
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, useWindowDimensions } from "react-native";
->>>>>>> origin/main
 import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Localization from 'expo-localization';
@@ -132,9 +127,6 @@ export default function MapScreen() {
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
   const adwaitaBlue = '#62a0ea';
-<<<<<<< HEAD
-  const adwaitaRed = '#e01b24';
-=======
 
   const getLatitudeOffset = (zoomDelta: number) => zoomDelta * 0.25;
 
@@ -144,7 +136,6 @@ export default function MapScreen() {
     latitudeDelta: 0.05,
     longitudeDelta: 0.05
   });
->>>>>>> origin/main
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [addPinTrigger, setAddPinTrigger] = useState(0);
@@ -178,62 +169,6 @@ export default function MapScreen() {
     }
   }, [params.openSheet]);
 
-<<<<<<< HEAD
-  
-  useEffect(() => {
-  const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
-  const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
-  const pinIdParam = typeof params.pinId === "string" ? params.pinId : undefined;
-  const openPinParam = typeof params.openPin === "string" ? params.openPin : undefined;
-
-  console.log("MAP PARAM DEBUG", {
-    rawLat: params.lat,
-    rawLng: params.lng,
-    rawPinId: params.pinId,
-    rawOpenPin: params.openPin,
-    latParam,
-    lngParam,
-    pinIdParam,
-    openPinParam,
-  });
-
-  let foundPin: any = null;
-
-  if (openPinParam === "true" && pinIdParam && pins?.length) {
-    foundPin = pins.find((p: any) => String(p._id) === String(pinIdParam));
-
-    if (foundPin) {
-      setSelectedPin(foundPin);
-      setIsViewSheetOpen(true);
-      setViewPinTrigger((prev) => prev + 1);
-      setIsSheetOpen(false);
-    }
-  }
-
-  const targetLat =
-    foundPin?.lat ??
-    (latParam !== undefined && !Number.isNaN(latParam) ? latParam : undefined);
-
-  const targetLng =
-    foundPin?.lng ??
-    (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
-
-  if (targetLat !== undefined && targetLng !== undefined) {
-    setTimeout(() => {
-      mapRef.current?.animateToRegion(
-        {
-          latitude: targetLat,
-          longitude: targetLng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        },
-        900
-      );
-    }, 350);
-  }
-}, [params.lat, params.lng, params.pinId, params.openPin, pins]);
-
-=======
   useEffect(() => {
     const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
     const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
@@ -269,7 +204,6 @@ export default function MapScreen() {
       }, 350);
     }
   }, [params.lat, params.lng, params.pinId, params.openPin, pins]);
->>>>>>> origin/main
 
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
@@ -520,30 +454,12 @@ export default function MapScreen() {
         {pinsWithMarkerOffsets?.map((pin: any) => (
           <PinMarker
             key={pin._id}
-<<<<<<< HEAD
-            coordinate={{ latitude: pin.lat, longitude: pin.lng }}
-            title={pin.title}
-            pinColor={adwaitaRed}
-            onPress={(e) => {
-              e.stopPropagation();
-              setSelectedPin(pin);
-              setIsViewSheetOpen(true);
-              setViewPinTrigger(prev => prev + 1);
-              setIsSheetOpen(false);
-            }}
-            onCalloutPress={() => {
-              router.push({
-                pathname: "/edit-caption",
-                params: { pinId: pin._id, currentCaption: pin.caption },
-              });
-=======
             pin={pin}
             theme={theme}
             isSelected={selectedPin?._id === pin._id}
             onPinPress={(e: any) => {
               e.stopPropagation();
               handleOpenPin(pin);
->>>>>>> origin/main
             }}
           />
         ))}
