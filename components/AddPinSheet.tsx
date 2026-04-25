@@ -129,19 +129,6 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
   }, [minimizeTrigger, isOpen]);
 
   useEffect(() => {
-    const backAction = () => {
-      if (!isOpen) return false;
-      if (activeGalleryIndex !== null) { setActiveGalleryIndex(null); return true; }
-      if (showTagModal) { setShowTagModal(false); return true; }
-      if (showLandmarkModal) { setShowLandmarkModal(false); return true; }
-      if (sheetIndex > 0) { snapTo(0); return true; }
-      return false;
-    };
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
-  }, [sheetIndex, activeGalleryIndex, isOpen, showTagModal, showLandmarkModal]);
-
-  useEffect(() => {
     if (isOpen) {
       setTimeout(() => snapTo(1), 50);
       if (initialTitle) setTitle(initialTitle);
@@ -202,7 +189,8 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
     if (selectedImages.length >= 10) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== 'granted') return;
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsMultipleSelection: true, selectionLimit: 10 - selectedImages.length, quality: 1 });
+    const remaining = 10 - selectedImages.length;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsMultipleSelection: true, selectionLimit: remaining, quality: 1 });
     if (res.canceled || res.assets.length === 0) return;
     setIsUploadingImages(true);
     try {
@@ -264,18 +252,12 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
       index={-1}
       snapPoints={snapPoints}
       enableDynamicSizing={true}
-      enablePanDownToClose
+      enablePanDownToClose={false}
       onClose={onClose}
       onChange={setSheetIndex}
       backgroundStyle={{ backgroundColor: theme.background }}
       keyboardBehavior="extend"
       keyboardBlurBehavior="none"
-      onAnimate={(fromIndex, toIndex) => {
-        if (programmaticSnapRef.current) return;
-        if (fromIndex === -1 || toIndex === -1) return;
-        if (toIndex - fromIndex > 1) snapTo(fromIndex + 1);
-        else if (fromIndex - toIndex > 1) snapTo(fromIndex - 1);
-      }}
       handleComponent={() => (
         <TouchableOpacity activeOpacity={1} onPress={() => { if (sheetIndex === 0) snapTo(1); }} style={styles.handleContainer}>
           <View style={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]} />
@@ -370,86 +352,59 @@ export default function AddPinSheet({ isOpen, onClose, initialLat, initialLng, i
         </Animated.View>
       )}
 
-      {/* LANDMARK MODAL */}
+      {/* MODALS: LANDMARK, TAGS, GALLERY (Same structure for consistency) */}
       <Modal visible={showLandmarkModal} animationType="slide" transparent onRequestClose={() => setShowLandmarkModal(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowLandmarkModal(false)}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Choose Landmark</Text>
-                <TouchableOpacity onPress={() => setShowLandmarkModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity>
-              </View>
-              <View style={{ padding: 16 }}>
-                <BottomSheetTextInput value={landmarkSearch} onChangeText={setLandmarkSearch} placeholder="Search landmarks..." placeholderTextColor={colorScheme === 'dark' ? '#888' : '#666'} style={[styles.newTagInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
-                <ScrollView style={{ maxHeight: 380 }}>
-                  {filteredLandmarks.map((l) => (
-                    <TouchableOpacity key={l.key} onPress={() => handleSelectLandmark(l)} style={[styles.predictionItem, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: theme.text, fontWeight: '600' }}>{l.name}</Text>
-                        <Text style={{ color: colorScheme === 'dark' ? '#888' : '#666', fontSize: 12 }}>{l.address}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
+          <TouchableWithoutFeedback><View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Choose Landmark</Text>
+              <TouchableOpacity onPress={() => setShowLandmarkModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity>
             </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* TAG MODAL */}
-      <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTagModal(false)}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Add Tags</Text>
-                <TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity>
-              </View>
-              <ScrollView style={{ padding: 16 }}>
-                {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
-                  <View key={category} style={{ marginBottom: 20 }}>
-                    <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
-                    <View style={styles.tagOptionRow}>
-                      {tags && tags.map((tag: any) => {
-                        const isSelected = selectedTags.some(t => t._id === tag._id);
-                        return (<TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: isSelected ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb"), borderWidth: 1, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}><Text style={[styles.tagOptionText, { color: isSelected ? "#fff" : theme.text }]}>{tag.name}{isSelected ? " ✓" : ""}</Text></TouchableOpacity>);
-                      })}
-                    </View>
-                  </View>
+            <View style={{ padding: 16 }}>
+              <BottomSheetTextInput value={landmarkSearch} onChangeText={setLandmarkSearch} placeholder="Search landmarks..." placeholderTextColor={colorScheme === 'dark' ? '#888' : '#666'} style={[styles.newTagInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
+              <ScrollView style={{ maxHeight: 380 }}>
+                {filteredLandmarks.map((l) => (
+                  <TouchableOpacity key={l.key} onPress={() => handleSelectLandmark(l)} style={[styles.predictionItem, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                    <View style={{ flex: 1 }}><Text style={{ color: theme.text, fontWeight: '600' }}>{l.name}</Text><Text style={{ color: colorScheme === 'dark' ? '#888' : '#666', fontSize: 12 }}>{l.address}</Text></View>
+                  </TouchableOpacity>
                 ))}
-                <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
-                  <Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
-                  <BottomSheetTextInput value={newTagName} onChangeText={setNewTagName} placeholder="Tag name..." placeholderTextColor={colorScheme === 'dark' ? '#888' : '#666'} style={[styles.newTagInput, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#fff', color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
-                  <View style={styles.colorRow}>
-                    {["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map(color => (<TouchableOpacity key={color} onPress={() => setSelectedColor(color)} style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]} />))}
-                  </View>
-                  <TouchableOpacity style={styles.createTagButton} onPress={handleCreateTag}><Text style={styles.createTagButtonText}>Create Tag</Text></TouchableOpacity>
-                </View>
-                <TouchableOpacity style={[styles.saveButton, { marginTop: 20, marginBottom: 40, width: '100%' }]} onPress={() => setShowTagModal(false)}><Text style={styles.saveButtonText}>Done</Text></TouchableOpacity>
               </ScrollView>
             </View>
-          </TouchableWithoutFeedback>
+          </View></TouchableWithoutFeedback>
         </TouchableOpacity>
       </Modal>
 
-      {/* GALLERY VIEW MODAL */}
+      <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTagModal(false)}>
+          <TouchableWithoutFeedback><View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>Add Tags</Text><TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity></View>
+            <ScrollView style={{ padding: 16 }}>
+              {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
+                <View key={category} style={{ marginBottom: 20 }}><Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
+                  <View style={styles.tagOptionRow}>{tags && tags.map((tag: any) => {
+                    const isSelected = selectedTags.some(t => t._id === tag._id);
+                    return (<TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: isSelected ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb"), borderWidth: 1, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}><Text style={[styles.tagOptionText, { color: isSelected ? "#fff" : theme.text }]}>{tag.name}{isSelected ? " ✓" : ""}</Text></TouchableOpacity>);
+                  })}</View>
+                </View>
+              ))}
+              <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                <Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
+                <BottomSheetTextInput value={newTagName} onChangeText={setNewTagName} placeholder="Tag name..." placeholderTextColor={colorScheme === 'dark' ? '#888' : '#666'} style={[styles.newTagInput, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#fff', color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
+                <View style={styles.colorRow}>{["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map(color => (<TouchableOpacity key={color} onPress={() => setSelectedColor(color)} style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]} />))}</View>
+                <TouchableOpacity style={styles.createTagButton} onPress={handleCreateTag}><Text style={styles.createTagButtonText}>Create Tag</Text></TouchableOpacity>
+              </View>
+              <TouchableOpacity style={[styles.saveButton, { marginTop: 20, marginBottom: 40, width: '100%' }]} onPress={() => setShowTagModal(false)}><Text style={styles.saveButtonText}>Done</Text></TouchableOpacity>
+            </ScrollView>
+          </View></TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={activeGalleryIndex !== null} transparent animationType="fade" onRequestClose={() => setActiveGalleryIndex(null)}>
         <View style={styles.galleryOverlay}>
           <TouchableOpacity style={[styles.galleryCloseButton, { top: insets.top + 10 }]} onPress={() => setActiveGalleryIndex(null)}><Text style={styles.galleryCloseText}>✕</Text></TouchableOpacity>
           {activeGalleryIndex !== null && selectedImages[activeGalleryIndex] && (
-            <View style={styles.galleryContent}>
-              <Image source={{ uri: selectedImages[activeGalleryIndex].uri }} style={styles.galleryMainImage} contentFit="contain" />
-              <View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}>
-                <BottomSheetTextInput
-                  style={styles.captionInput}
-                  placeholder="Add a caption..."
-                  placeholderTextColor="#a1a1aa"
-                  value={selectedImages[activeGalleryIndex].caption}
-                  onChangeText={(t) => { const i = [...selectedImages]; i[activeGalleryIndex].caption = t; setSelectedImages(i); }}
-                  multiline
-                />
-              </View>
+            <View style={styles.galleryContent}><Image source={{ uri: selectedImages[activeGalleryIndex].uri }} style={styles.galleryMainImage} contentFit="contain" />
+              <View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}><BottomSheetTextInput style={styles.captionInput} placeholder="Add a caption..." placeholderTextColor="#a1a1aa" value={selectedImages[activeGalleryIndex].caption} onChangeText={(t) => { const i = [...selectedImages]; i[activeGalleryIndex].caption = t; setSelectedImages(i); }} multiline /></View>
             </View>
           )}
         </View>

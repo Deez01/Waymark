@@ -49,7 +49,6 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
 
   const [toastVisible, setToastVisible] = useState(false);
   const toastOpacity = useRef(new Animated.Value(0)).current;
-
   const showToast = () => {
     setToastVisible(true);
     Animated.sequence([
@@ -75,10 +74,8 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const [newImages, setNewImages] = useState<NewPinImage[]>([]);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [thumbnailStorageId, setThumbnailStorageId] = useState<string | null>(null);
-
   const [newTagName, setNewTagName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
-
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
 
@@ -88,13 +85,6 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     acc[category].push(tag);
     return acc;
   }, {}) : {};
-
-  const programmaticSnapRef = useRef(false);
-  const snapTo = (index: number) => {
-    programmaticSnapRef.current = true;
-    bottomSheetRef.current?.snapToIndex(index);
-    setTimeout(() => { programmaticSnapRef.current = false; }, 500);
-  };
 
   const handleCopyAddress = async () => {
     const addr = targetPin?.address;
@@ -152,8 +142,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     if (result.canceled || result.assets.length === 0) return;
     setIsUploadingImages(true);
     try {
-      const isFirst = currentTotal === 0;
-      const processed = await compressPinImage(result.assets[0].uri, isFirst);
+      const processed = await compressPinImage(result.assets[0].uri, currentTotal === 0);
       const sid = await uploadImageUri(processed.fullUri);
       if (processed.thumbnailUri) setThumbnailStorageId(await uploadImageUri(processed.thumbnailUri));
       setNewImages(prev => [...prev, { storageId: sid, uri: processed.fullUri, caption: '' }]);
@@ -196,7 +185,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     const keyboardEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const keyboardListener = Keyboard.addListener(keyboardEvent, () => {
       if (isOpen && viewerIndex === null && !isMinimizing.current) {
-        snapTo(1);
+        bottomSheetRef.current?.snapToIndex(1);
       }
       setIsSheetInputFocused(false);
     });
@@ -213,27 +202,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   }, [minimizeTrigger, isOpen]);
 
   useEffect(() => {
-    const backAction = () => {
-      if (!isOpen) return false;
-      if (viewerIndex !== null) { setViewerIndex(null); return true; }
-      if (showTagModal) { setShowTagModal(false); return true; }
-      if (sheetIndex > 0) { snapTo(0); return true; }
-      return false;
-    };
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
-  }, [sheetIndex, viewerIndex, isOpen, showTagModal]);
-
-  useEffect(() => {
     if (isOpen && pin) {
-      setActivePin(pin);
-      setTitle(pin.title || '');
-      setDescription(pin.description || '');
+      setActivePin(pin); setTitle(pin.title || ''); setDescription(pin.description || '');
       setNewImages([]); setThumbnailStorageId(null); setCaptionEdits({});
-      setTimeout(() => snapTo(1), 50);
+      setTimeout(() => bottomSheetRef.current?.snapToIndex(1), 50);
     } else {
-      bottomSheetRef.current?.close();
-      Keyboard.dismiss();
+      bottomSheetRef.current?.close(); Keyboard.dismiss();
     }
   }, [isOpen, pin, openTrigger]);
 
@@ -253,13 +227,13 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       index={-1}
       snapPoints={snapPoints}
       enableDynamicSizing={true}
-      enablePanDownToClose
+      enablePanDownToClose={false}
       onClose={onClose}
       onChange={setSheetIndex}
       backgroundStyle={{ backgroundColor: theme.background }}
       keyboardBehavior="extend"
       handleComponent={() => (
-        <TouchableOpacity activeOpacity={1} onPress={() => { if (sheetIndex === 0) snapTo(1); }} style={styles.handleContainer}>
+        <TouchableOpacity activeOpacity={1} onPress={() => { if (sheetIndex === 0) bottomSheetRef.current?.snapToIndex(1); }} style={styles.handleContainer}>
           <View style={[styles.handleIndicator, { backgroundColor: colorScheme === 'dark' ? '#444' : '#ddd' }]} />
         </TouchableOpacity>
       )}
@@ -280,10 +254,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
                 </TouchableOpacity>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]}
-              onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])}
-            >
+            <TouchableOpacity style={[styles.addImageButton, { backgroundColor: colorScheme === 'dark' ? '#2c2c2e' : '#f0f0f0' }]} onPress={() => Alert.alert('Add Photo', 'Source', [{ text: 'Camera', onPress: handleTakePhoto }, { text: 'Library', onPress: handlePickFromLibrary }, { text: 'Cancel', style: 'cancel' }])}>
               {isUploadingImages ? <ActivityIndicator color={theme.text} /> : <IconSymbol name="add" size={48} color={theme.text} />}
             </TouchableOpacity>
           </GHScrollView>
@@ -292,18 +263,12 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
             {pins.length > 1 && (
               <View style={styles.groupSelectorContainer}>
                 <Text style={[styles.groupSelectorLabel, { color: theme.text }]}>Memories at this location</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.groupSelectorRow}>
-                    {pins.map((groupPin: any, index: number) => {
-                      const isActive = targetPin?._id === groupPin._id;
-                      return (
-                        <TouchableOpacity key={groupPin._id} onPress={() => setActivePin(groupPin)} style={[styles.groupSelectorChip, { backgroundColor: isActive ? theme.tint : (colorScheme === "dark" ? "#333" : "#e5e7eb"), borderColor: colorScheme === "dark" ? "#444" : "#ccc" }]}>
-                          <Text style={{ color: isActive ? "#fff" : theme.text, fontWeight: "600" }}>{groupPin.title || `Memory ${index + 1}`}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={styles.groupSelectorRow}>
+                  {pins.map((groupPin: any) => {
+                    const isActive = targetPin?._id === groupPin._id;
+                    return (<TouchableOpacity key={groupPin._id} onPress={() => setActivePin(groupPin)} style={[styles.groupSelectorChip, { backgroundColor: isActive ? theme.tint : (colorScheme === "dark" ? "#333" : "#e5e7eb"), borderColor: colorScheme === "dark" ? "#444" : "#ccc" }]}><Text style={{ color: isActive ? "#fff" : theme.text, fontWeight: "600" }}>{groupPin.title || "Memory"}</Text></TouchableOpacity>);
+                  })}
+                </View></ScrollView>
               </View>
             )}
 
@@ -317,128 +282,55 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
                 {pinTags && pinTags.length > 0 ? (
                   <View style={styles.tagFlow}>
                     {pinTags.map((tag: any) => (
-                      <TouchableOpacity key={tag._id} onPress={() => setShowTagModal(true)}>
-                        <View style={[styles.selectedTagPill, { backgroundColor: tag.color || '#3b82f6' }]}>
-                          <Text style={styles.selectedTagText}>{tag.name}</Text>
-                        </View>
-                      </TouchableOpacity>
+                      <TouchableOpacity key={tag._id} onPress={() => setShowTagModal(true)}><View style={[styles.selectedTagPill, { backgroundColor: tag.color || '#3b82f6' }]}><Text style={styles.selectedTagText}>{tag.name}</Text></View></TouchableOpacity>
                     ))}
-                    <TouchableOpacity onPress={() => setShowTagModal(true)} style={styles.smallAddTagButton}>
-                      <IconSymbol name="add" size={18} color={theme.text} />
-                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setShowTagModal(true)} style={styles.smallAddTagButton}><IconSymbol name="add" size={18} color={theme.text} /></TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}>
-                    <IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} />
-                    <Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text>
-                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.metaButton} onPress={() => setShowTagModal(true)}><IconSymbol name="star" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} /><Text style={[styles.metaText, { color: colorScheme === 'dark' ? '#888' : '#666' }]}>Tags +</Text></TouchableOpacity>
                 )}
               </View>
-
-              <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}>
-                <IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} style={{ marginTop: 2 }} />
-                <Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{targetPin.address || "No address provided"}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.addressContainer} onPress={handleCopyAddress}><IconSymbol name="place" size={14} color={colorScheme === 'dark' ? '#888' : '#666'} style={{ marginTop: 2 }} /><Text style={[styles.addressText, { color: colorScheme === 'dark' ? '#888' : '#666' }]} numberOfLines={2}>{targetPin.address || "No address provided"}</Text></TouchableOpacity>
             </View>
 
             <View style={[styles.notesAndSaveRow, sheetIndex === 2 && styles.notesAndSaveRowExpanded]}>
-              <BottomSheetTextInput
-                style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]}
-                placeholder="Add Notes..."
-                placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'}
-                multiline
-                value={description}
-                onChangeText={setDescription}
-                onFocus={() => setIsSheetInputFocused(true)}
-              />
-              <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting}>
-                {isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}
-              </TouchableOpacity>
+              <BottomSheetTextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Add Notes..." placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'} multiline value={description} onChangeText={setDescription} onFocus={() => setIsSheetInputFocused(true)} blurOnSubmit={true} onSubmitEditing={() => Keyboard.dismiss()} />
+              <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting}>{isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}</TouchableOpacity>
             </View>
           </View>
         </BottomSheetScrollView>
       ) : <View style={{ flex: 1 }} />}
 
-      {toastVisible && (
-        <Animated.View style={[styles.toastContainer, { opacity: toastOpacity, bottom: insets.bottom + 80 }]}>
-          <Text style={styles.toastText}>Address copied!</Text>
-        </Animated.View>
-      )}
+      {toastVisible && <Animated.View style={[styles.toastContainer, { opacity: toastOpacity, bottom: insets.bottom + 80 }]}><Text style={styles.toastText}>Address copied!</Text></Animated.View>}
 
-      {/* GALLERY VIEWER MODAL */}
       <Modal visible={viewerIndex !== null} transparent animationType="fade" onRequestClose={() => setViewerIndex(null)}>
-        <View style={styles.galleryOverlay}>
-          <TouchableOpacity style={[styles.fullscreenCloseButton, { top: Platform.OS === 'ios' ? 50 : 30 }]} onPress={() => setViewerIndex(null)}>
-            <Text style={styles.fullscreenCloseText}>✕</Text>
-          </TouchableOpacity>
-          <FlatList
-            data={allViewerPictures}
-            keyExtractor={(item) => item.storageId}
-            horizontal pagingEnabled
-            initialScrollIndex={viewerIndex ?? 0}
-            getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })}
-            onMomentumScrollEnd={(e) => setViewerIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))}
-            renderItem={({ item }) => (
-              <View style={styles.fullscreenImageWrapper}>
-                {item.url ? <Image source={{ uri: item.url }} style={styles.fullscreenImage} contentFit="contain" /> : null}
-              </View>
-            )}
-          />
-          {viewerIndex !== null && (
-            <View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}>
-              <BottomSheetTextInput
-                style={styles.captionInput}
-                placeholder="Add a caption..."
-                placeholderTextColor="#a1a1aa"
-                value={currentActiveCaption}
-                onChangeText={handleUpdateCaption}
-                multiline
-                maxLength={150}
-              />
-            </View>
-          )}
+        <View style={styles.galleryOverlay}><TouchableOpacity style={[styles.fullscreenCloseButton, { top: Platform.OS === 'ios' ? 50 : 30 }]} onPress={() => setViewerIndex(null)}><Text style={styles.fullscreenCloseText}>✕</Text></TouchableOpacity>
+          <FlatList data={allViewerPictures} keyExtractor={(item) => item.storageId} horizontal pagingEnabled initialScrollIndex={viewerIndex ?? 0} getItemLayout={(_, index) => ({ length: screenWidth, offset: screenWidth * index, index })} onMomentumScrollEnd={(e) => setViewerIndex(Math.round(e.nativeEvent.contentOffset.x / screenWidth))} renderItem={({ item }) => (<View style={styles.fullscreenImageWrapper}>{item.url ? <Image source={{ uri: item.url }} style={styles.fullscreenImage} contentFit="contain" /> : null}</View>)} />
+          {viewerIndex !== null && (<View style={[styles.captionInputContainer, { bottom: insets.bottom + 20 }]}><BottomSheetTextInput style={styles.captionInput} placeholder="Add a caption..." placeholderTextColor="#a1a1aa" value={currentActiveCaption} onChangeText={handleUpdateCaption} multiline maxLength={150} blurOnSubmit={true} onSubmitEditing={() => Keyboard.dismiss()} /></View>)}
         </View>
       </Modal>
 
-      {/* TAG MODAL */}
       <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowTagModal(false)}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.modalContent, { backgroundColor: theme.background }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text>
-                <TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity>
-              </View>
-              <ScrollView style={{ padding: 16 }}>
-                {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
-                  <View key={category} style={{ marginBottom: 20 }}>
-                    <Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
-                    <View style={styles.tagOptionRow}>
-                      {tags.map((tag: any) => {
-                        const isSelected = pinTags?.some((t: any) => t._id === tag._id);
-                        return (
-                          <TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: isSelected ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb"), borderWidth: 1, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}>
-                            <Text style={{ color: isSelected ? "#fff" : theme.text }}>{tag.name}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ))}
-                <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
-                  <Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
-                  <BottomSheetTextInput value={newTagName} onChangeText={setNewTagName} placeholder="Tag name..." placeholderTextColor="#666" style={[styles.newTagInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
-                  <View style={styles.colorRow}>
-                    {["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map(color => (
-                      <TouchableOpacity key={color} onPress={() => setSelectedColor(color)} style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]} />
-                    ))}
-                  </View>
-                  <TouchableOpacity style={styles.createTagButton} onPress={handleCreateTag}><Text style={styles.createTagButtonText}>Create & Link Tag</Text></TouchableOpacity>
+          <TouchableWithoutFeedback><View style={[styles.modalContent, { backgroundColor: theme.background }]}>
+            <View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text><TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity></View>
+            <ScrollView style={{ padding: 16 }}>
+              {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
+                <View key={category} style={{ marginBottom: 20 }}><Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
+                  <View style={styles.tagOptionRow}>{tags.map((tag: any) => {
+                    const isSelected = pinTags?.some((t: any) => t._id === tag._id);
+                    return (<TouchableOpacity key={tag._id} onPress={() => toggleTagSelection(tag)} style={[styles.tagOption, { backgroundColor: isSelected ? (tag.color || "#3b82f6") : (colorScheme === 'dark' ? '#333' : "#e5e7eb"), borderWidth: 1, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]}><Text style={{ color: isSelected ? "#fff" : theme.text }}>{tag.name}</Text></TouchableOpacity>);
+                  })}</View>
                 </View>
-                <TouchableOpacity style={[styles.saveButton, { marginTop: 20, marginBottom: 40, width: '100%' }]} onPress={() => setShowTagModal(false)}><Text style={styles.saveButtonText}>Done</Text></TouchableOpacity>
-              </ScrollView>
-            </View>
-          </TouchableWithoutFeedback>
+              ))}
+              <View style={[styles.createTagSection, { borderTopColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}><Text style={[styles.categoryTitle, { color: theme.text }]}>Create New Tag</Text>
+                <BottomSheetTextInput value={newTagName} onChangeText={setNewTagName} placeholder="Tag name..." placeholderTextColor="#666" style={[styles.newTagInput, { color: theme.text, borderColor: colorScheme === 'dark' ? '#444' : '#ccc' }]} />
+                <View style={styles.colorRow}>{["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"].map(color => (<TouchableOpacity key={color} onPress={() => setSelectedColor(color)} style={[styles.colorCircle, { backgroundColor: color, borderWidth: selectedColor === color ? 3 : 0, borderColor: theme.text }]} />))}</View>
+                <TouchableOpacity style={styles.createTagButton} onPress={handleCreateTag}><Text style={styles.createTagButtonText}>Create & Link Tag</Text></TouchableOpacity>
+              </View>
+              <TouchableOpacity style={[styles.saveButton, { marginTop: 20, marginBottom: 40, width: '100%' }]} onPress={() => setShowTagModal(false)}><Text style={styles.saveButtonText}>Done</Text></TouchableOpacity>
+            </ScrollView>
+          </View></TouchableWithoutFeedback>
         </TouchableOpacity>
       </Modal>
     </BottomSheet>
@@ -451,8 +343,8 @@ const styles = StyleSheet.create({
   contentContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
   imageScroll: { marginBottom: 20 },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10, position: 'relative' },
-  previewImage: { width: '100%', height: '100%' },
+  imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10 },
+  previewImage: { width: '100%', height: '100%', borderRadius: 12 },
   removeImageButton: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
   removeImageText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   formContainer: { flex: 1 },
@@ -465,7 +357,7 @@ const styles = StyleSheet.create({
   smallAddTagButton: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   metaButton: { flexDirection: 'row', alignItems: 'center' },
   metaText: { marginLeft: 4, fontSize: 14 },
-  addressContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end', maxWidth: '65%' },
+  addressContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'flex-end', marginLeft: 15, maxWidth: '65%' },
   addressText: { marginLeft: 4, fontSize: 14, textAlign: 'left', flexShrink: 1 },
   selectedTagPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
   selectedTagText: { color: '#fff', fontSize: 11, fontWeight: '600' },
@@ -484,12 +376,6 @@ const styles = StyleSheet.create({
   categoryTitle: { fontSize: 14, fontWeight: "600", marginBottom: 10 },
   tagOptionRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
-  createTagSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 1 },
-  newTagInput: { borderWidth: 1, padding: 10, borderRadius: 6, marginBottom: 12 },
-  colorRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  colorCircle: { width: 40, height: 40, borderRadius: 20 },
-  createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   groupSelectorContainer: { marginBottom: 14 },
   groupSelectorLabel: { fontSize: 13, fontWeight: "600", marginBottom: 8, opacity: 0.8 },
   groupSelectorRow: { flexDirection: "row", gap: 8 },
@@ -501,4 +387,10 @@ const styles = StyleSheet.create({
   fullscreenImage: { width: '100%', height: '100%' },
   captionInputContainer: { position: 'absolute', width: '90%', alignSelf: 'center', backgroundColor: 'rgba(28, 28, 30, 0.85)', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)', zIndex: 1000 },
   captionInput: { color: '#ffffff', fontSize: 15, maxHeight: 100 },
+  createTagSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 1 },
+  newTagInput: { borderWidth: 1, padding: 10, borderRadius: 6, marginBottom: 12 },
+  colorRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  colorCircle: { width: 40, height: 40, borderRadius: 20 },
+  createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 });
