@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+import { getAuthUserId } from "@convex-dev/auth/server";
 
 export const changeVisibility = mutation({
     args: {
@@ -36,5 +37,17 @@ export const changeVisibility = mutation({
         });
 
         return { success: true };
+    },
+});
+
+export const getUserMemories = query({
+    args: {}, 
+    handler: async (ctx) => {
+        const userId = await getAuthUserId(ctx);
+
+        return await ctx.db
+            .query("memories")
+            .withIndex("by_user", (q) => q.eq("userId", userId))
+            .collect();
     },
 });

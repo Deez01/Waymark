@@ -170,3 +170,33 @@ export const updatePin = mutation({
     await ctx.db.patch(args.pinId, updates);
   },
 });
+
+export const getPinsWithUrls = query({
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const pins = await ctx.db
+      .query("pins")
+      .withIndex("by_ownerId", (q) => q.eq("ownerId", userId.toString()))
+      .collect();
+
+    // Map pictures storageIds to URLs
+    const pinsWithUrls = await Promise.all(
+      pins.map(async (pin) => {
+        const picturesUrls =
+          pin.pictures?.length > 0
+            ? await Promise.all(
+                pin.pictures.map(async (storageId) => ({
+                  storageId,
+                  url: await ctx.storage.getUrl(storageId),
+                }))
+              )
+            : [];
+        return { ...pin, picturesUrls };
+      })
+    );
+
+    return pinsWithUrls;
+  },
+});

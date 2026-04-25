@@ -1,11 +1,11 @@
 // app/(tabs)/index.tsx
-import { useState, useEffect } from "react";
-import { View, TextInput, StyleSheet, TouchableOpacity, Text, Keyboard } from "react-native";
-import MapView, { Marker, LongPressEvent } from "react-native-maps";
-import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { router, useLocalSearchParams } from "expo-router";
 import { MaterialIcons } from '@expo/vector-icons';
+import { useQuery } from "convex/react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import MapView, { LongPressEvent, Marker } from "react-native-maps";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import AddPinSheet from "@/components/AddPinSheet";
@@ -18,11 +18,12 @@ export default function MapScreen() {
   const params = useLocalSearchParams();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
+  const mapRef = useRef<MapView | null>(null);
 
   const theme = colorScheme === 'dark' ? Colors.dark : Colors.light;
 
   const adwaitaBlue = '#62a0ea';
-  const adwaitaRed = '#e01b24'; // Added Adwaita Red for the pins
+  const adwaitaRed = '#e01b24';
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedLat, setSelectedLat] = useState<number | undefined>();
@@ -52,6 +53,61 @@ export default function MapScreen() {
       router.setParams({ openSheet: '' });
     }
   }, [params.openSheet]);
+
+  
+  useEffect(() => {
+  const latParam = typeof params.lat === "string" ? Number(params.lat) : undefined;
+  const lngParam = typeof params.lng === "string" ? Number(params.lng) : undefined;
+  const pinIdParam = typeof params.pinId === "string" ? params.pinId : undefined;
+  const openPinParam = typeof params.openPin === "string" ? params.openPin : undefined;
+
+  console.log("MAP PARAM DEBUG", {
+    rawLat: params.lat,
+    rawLng: params.lng,
+    rawPinId: params.pinId,
+    rawOpenPin: params.openPin,
+    latParam,
+    lngParam,
+    pinIdParam,
+    openPinParam,
+  });
+
+  let foundPin: any = null;
+
+  if (openPinParam === "true" && pinIdParam && pins?.length) {
+    foundPin = pins.find((p: any) => String(p._id) === String(pinIdParam));
+
+    if (foundPin) {
+      setSelectedPin(foundPin);
+      setIsViewSheetOpen(true);
+      setViewPinTrigger((prev) => prev + 1);
+      setIsSheetOpen(false);
+    }
+  }
+
+  const targetLat =
+    foundPin?.lat ??
+    (latParam !== undefined && !Number.isNaN(latParam) ? latParam : undefined);
+
+  const targetLng =
+    foundPin?.lng ??
+    (lngParam !== undefined && !Number.isNaN(lngParam) ? lngParam : undefined);
+
+  if (targetLat !== undefined && targetLng !== undefined) {
+    setTimeout(() => {
+      mapRef.current?.animateToRegion(
+        {
+          latitude: targetLat,
+          longitude: targetLng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        900
+      );
+    }, 350);
+  }
+}, [params.lat, params.lng, params.pinId, params.openPin, pins]);
+
 
   const handleLongPress = (e: LongPressEvent) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
@@ -102,6 +158,7 @@ export default function MapScreen() {
   return (
     <View style={{ flex: 1 }}>
       <MapView
+        ref={mapRef}
         provider="google"
         style={{ flex: 1 }}
         initialRegion={{
@@ -111,7 +168,6 @@ export default function MapScreen() {
           longitudeDelta: 0.05,
         }}
         customMapStyle={colorScheme === 'dark' ? darkMapStyle : lightMapStyle}
-
         showsUserLocation={true}
         showsMyLocationButton={true}
         mapPadding={{
@@ -133,10 +189,9 @@ export default function MapScreen() {
             key={pin._id}
             coordinate={{ latitude: pin.lat, longitude: pin.lng }}
             title={pin.title}
-            // Pins set to Adwaita Red for better visibility
             pinColor={adwaitaRed}
             onPress={(e) => {
-              e.stopPropagation(); // Prevent the map's onPress from firing
+              e.stopPropagation();
               setSelectedPin(pin);
               setIsViewSheetOpen(true);
               setViewPinTrigger(prev => prev + 1);
@@ -218,7 +273,6 @@ export default function MapScreen() {
     </View>
   );
 }
-
 
 const darkMapStyle = [
   { "elementType": "geometry", "stylers": [{ "color": "#2d2d2d" }] },
