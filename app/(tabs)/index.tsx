@@ -148,12 +148,24 @@ export default function MapScreen() {
   const [isViewSheetOpen, setIsViewSheetOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState<any>(null);
   const [selectedPinsAtLocation, setSelectedPinsAtLocation] = useState<any[]>([]);
+  const [nearbyAnchorPin, setNearbyAnchorPin] = useState<any>(null);
   const [viewPinTrigger, setViewPinTrigger] = useState(0);
 
   const [minimizeTrigger, setMinimizeTrigger] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [predictions, setPredictions] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const focusPinOnMap = (pin: any) => {
+    const targetZoom = 0.01;
+
+    mapRef.current?.animateToRegion({
+      latitude: pin.lat - getLatitudeOffset(targetZoom),
+      longitude: pin.lng,
+      latitudeDelta: targetZoom,
+      longitudeDelta: targetZoom,
+    }, 500);
+  };
 
   useEffect(() => {
     if (params.openSheet === 'true') {
@@ -181,6 +193,7 @@ export default function MapScreen() {
       foundPin = pins.find((p: any) => String(p._id) === String(pinIdParam));
       if (foundPin) {
         setSelectedPin(foundPin);
+        setNearbyAnchorPin(foundPin);
         setIsViewSheetOpen(true);
         setViewPinTrigger((prev) => prev + 1);
         setIsSheetOpen(false);
@@ -401,21 +414,48 @@ export default function MapScreen() {
 
   const handleOpenPin = (pin: any) => {
     const groupedPins = getGroupedPinsForSelection(pin);
+    setNearbyAnchorPin(pin);
     setSelectedPin(pin);
     setSelectedPinsAtLocation(groupedPins);
     setIsViewSheetOpen(true);
     setViewPinTrigger(prev => prev + 1);
     setIsSheetOpen(false);
 
-    const currentZoom = currentRegion.latitudeDelta;
-
-    mapRef.current?.animateToRegion({
-      latitude: pin.lat - getLatitudeOffset(currentZoom),
-      longitude: pin.lng,
-      latitudeDelta: currentZoom,
-      longitudeDelta: currentRegion.longitudeDelta,
-    }, 500);
+    focusPinOnMap(pin);
   };
+
+  const handleOpenNearbyPin = (pin: any) => {
+    const groupedPins = getGroupedPinsForSelection(pin);
+    setSelectedPin(pin);
+    setSelectedPinsAtLocation(groupedPins);
+    setIsViewSheetOpen(true);
+    setViewPinTrigger(prev => prev + 1);
+    setIsSheetOpen(false);
+
+    focusPinOnMap(pin);
+  };
+
+  const nearbyPins = useMemo(() => {
+    const anchorPin = nearbyAnchorPin || selectedPin;
+    if (!pins?.length || !anchorPin) return [];
+
+    const orderedNearbyPins = pins
+      .filter((pin: any) => String(pin._id) !== String(anchorPin._id))
+      .map((pin: any) => ({
+        pin,
+        distanceKm: getDistanceFromLatLonInKm(
+          anchorPin.lat,
+          anchorPin.lng,
+          pin.lat,
+          pin.lng
+        ),
+      }))
+      .filter(({ distanceKm }) => distanceKm > 0.01)
+      .sort((a: any, b: any) => a.distanceKm - b.distanceKm)
+      .slice(0, 7);
+
+    return [{ pin: anchorPin, distanceKm: 0 }, ...orderedNearbyPins];
+  }, [pins, nearbyAnchorPin, selectedPin]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -543,11 +583,14 @@ export default function MapScreen() {
           setIsViewSheetOpen(false);
           setSelectedPin(null);
           setSelectedPinsAtLocation([]);
+          setNearbyAnchorPin(null);
         }}
         pin={selectedPin}
         pins={selectedPinsAtLocation}
+        nearbyPins={nearbyPins}
         minimizeTrigger={minimizeTrigger}
         openTrigger={viewPinTrigger}
+        onNearbyPinSelect={(pin: any) => handleOpenNearbyPin(pin)}
       />
     </View>
   );

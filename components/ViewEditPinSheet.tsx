@@ -21,12 +21,14 @@ interface ViewEditPinSheetProps {
   onClose: () => void;
   pin: any | null;
   pins?: any[];
+  nearbyPins?: Array<{ pin: any; distanceKm: number }>;
   minimizeTrigger?: number;
   openTrigger?: number;
+  onNearbyPinSelect?: (pin: any) => void;
 }
 interface NewPinImage { storageId: string; uri: string; caption: string; }
 
-export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
+export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], nearbyPins = [], minimizeTrigger, openTrigger, onNearbyPinSelect }: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -34,6 +36,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const isMinimizing = useRef(false);
 
   const [activePin, setActivePin] = useState<any | null>(null);
+  const [nearbyIndex, setNearbyIndex] = useState(0);
   const targetPin = activePin || pin;
 
   const maxSheetHeight = useMemo(() => {
@@ -211,6 +214,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     }
   }, [isOpen, pin, openTrigger]);
 
+  useEffect(() => {
+    const currentNearbyIndex = nearbyPins.findIndex((entry) => String(entry.pin._id) === String(targetPin?._id));
+    setNearbyIndex(currentNearbyIndex >= 0 ? currentNearbyIndex : 0);
+  }, [targetPin?._id, nearbyPins]);
+
   const allViewerPictures = [...(pinPictures || []).map((p: any) => ({ storageId: p.storageId, url: p.url, caption: p.caption, isExisting: true })), ...newImages.map(img => ({ storageId: img.storageId, url: img.uri, caption: img.caption, isExisting: false }))];
   let currentActiveCaption = '';
   if (viewerIndex !== null && allViewerPictures[viewerIndex]) {
@@ -220,6 +228,15 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   }
 
   const displayDate = targetPin?.createdAt ? new Date(targetPin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '';
+  const hasNearbyPins = nearbyPins.length > 1;
+
+  const navigateNearby = (direction: -1 | 1) => {
+    if (!nearbyPins.length) return;
+
+    const nextIndex = (nearbyIndex + direction + nearbyPins.length) % nearbyPins.length;
+    setNearbyIndex(nextIndex);
+    onNearbyPinSelect?.(nearbyPins[nextIndex].pin);
+  };
 
   return (
     <BottomSheet
@@ -240,6 +257,26 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     >
       {targetPin ? (
         <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
+          {hasNearbyPins && (
+            <View style={styles.topNavRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.nearbyArrowButton, styles.nearbyArrowButtonLeft, { backgroundColor: colorScheme === 'dark' ? '#242424' : '#f3f4f6', borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#d4d4d8' }]}
+                onPress={() => navigateNearby(-1)}
+              >
+                <IconSymbol name="chevron-left" size={24} color={theme.text} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.nearbyArrowButton, styles.nearbyArrowButtonRight, { backgroundColor: colorScheme === 'dark' ? '#242424' : '#f3f4f6', borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#d4d4d8' }]}
+                onPress={() => navigateNearby(1)}
+              >
+                <IconSymbol name="chevron-right" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
             {pinPictures && pinPictures.map((picture: any, index: number) => (
               <TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>
@@ -341,7 +378,11 @@ const styles = StyleSheet.create({
   handleContainer: { width: '100%', alignItems: 'center', paddingTop: 12, paddingBottom: 10 },
   handleIndicator: { width: 40, height: 4, borderRadius: 2 },
   contentContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  topNavRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   imageScroll: { marginBottom: 20 },
+  nearbyArrowButton: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  nearbyArrowButtonLeft: { alignSelf: 'flex-start' },
+  nearbyArrowButtonRight: { alignSelf: 'flex-end' },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10 },
   previewImage: { width: '100%', height: '100%', borderRadius: 12 },
