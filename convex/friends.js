@@ -7,7 +7,7 @@ import { mutation, query } from "./_generated/server";
 export const searchUsers = query({
     args: { 
         search: v.string(), 
-        currentUserId: v.string("users"),
+        currentUserId: v.id("users"),
     },
     handler: async (ctx, args) => { 
         if (!args.search) return [];
@@ -164,34 +164,40 @@ export const listFriends = query({
 });
 
 export const removeFriend = mutation({
-    args: {
-        userId: v.id("users"),
-        friendId: v.id("users"),
-    },
-    async handler(ctx, args) {
-        const friendship = await ctx.db
-        .query("friendships")
-        .filter((q) =>
-            q.or(
-            q.and(
-                q.eq(q.field("userId1"), args.userId),
-                q.eq(q.field("userId2"), args.friendId),
-                q.eq(q.field("status"), "accepted")  
-            ),
-            q.and(
-                q.eq(q.field("userId1"), args.friendId),
-                q.eq(q.field("userId2"), args.userId),
-                q.eq(q.field("status"), "accepted")  
-            )
-            )
+  args: {
+    userId: v.id("users"),
+    friendId: v.id("users"),
+  },
+
+  handler: async (ctx, args) => {
+    // Find accepted friend relationship in BOTH directions
+    const friendship = await ctx.db
+      .query("friendRequests")
+      .filter((q) =>
+        q.or(
+          q.and(
+            q.eq(q.field("senderId"), args.userId),
+            q.eq(q.field("receiverId"), args.friendId),
+            q.eq(q.field("status"), "accepted")
+          ),
+          q.and(
+            q.eq(q.field("senderId"), args.friendId),
+            q.eq(q.field("receiverId"), args.userId),
+            q.eq(q.field("status"), "accepted")
+          )
         )
-        .first();
+      )
+      .first();
 
-        if (!friendship) {
-        return { success: false, message: "No accepted friendship exists" };
-        }
+    if (!friendship) {
+      return {
+        success: false,
+        message: "Friendship not found",
+      };
+    }
 
-        await ctx.db.delete(friendship._id);
-        return { success: true };
-    },
+    await ctx.db.delete(friendship._id);
+
+    return { success: true };
+  },
 });
