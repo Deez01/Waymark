@@ -182,4 +182,13 @@ export default defineSchema({
   })
   .index("by_memory", ["memoryId"])
   .index("by_user_memory", ["userId", "memoryId"]),
+
+  messages: defineTable({
+  senderId: v.id("users"),
+  receiverId: v.id("users"),
+  text: v.string(),
+  createdAt: v.number(),
+})
+.index("by_sender", ["senderId"])
+.index("by_receiver", ["receiverId"]),
 });
