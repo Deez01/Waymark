@@ -7,101 +7,107 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
-import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Alert,
+  FlatList,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
+import { router } from "expo-router";
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
+  container: {
+    flex: 1,
+  },
 });
 
 export default function FriendScreen() {
-    const inputBackground = useThemeColor({}, "background");
-    const textColor = useThemeColor({}, "text");
-    const borderColor = useThemeColor({}, "icon")
+  const inputBackground = useThemeColor({}, "background");
+  const textColor = useThemeColor({}, "text");
+  const borderColor = useThemeColor({}, "icon");
 
-    const [query, setQuery] = useState("");
-    const [pending, setPending] = useState<Id<"users">[]>([]);
-    const [openMenuFriendId, setOpenMenuFriendId] = useState<Id<"users"> | null>(null);
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState<Id<"users">[]>([]);
+  const [openMenuFriendId, setOpenMenuFriendId] =
+    useState<Id<"users"> | null>(null);
 
-    // Current User
-    const currentUser = useQuery(api.users.getCurrentUser);
-    const currentUserId = currentUser?._id;
+  // Current User
+  const currentUser = useQuery(api.users.getCurrentUser);
+  const currentUserId = currentUser?._id;
 
-    if (!currentUserId) {
-        return <ThemedText>Loading user ... </ThemedText>;
-    }
+  if (!currentUserId) {
+    return <ThemedText>Loading user ... </ThemedText>;
+  }
 
-    // Queries
-    const results = useQuery(api.friends.searchUsers, {
-        search: query, 
-        currentUserId,
-    });
+  // Queries
+  const results = useQuery(api.friends.searchUsers, {
+    search: query,
+    currentUserId,
+  });
 
-    const incoming = useQuery(api.friends.getIncomingRequests, {
-        userId: currentUserId,
-    });
+  const incoming = useQuery(api.friends.getIncomingRequests, {
+    userId: currentUserId,
+  });
 
-    const friends = useQuery(api.friends.listFriends, {
-        userId: currentUserId,
-    });
+  const friends = useQuery(api.friends.listFriends, {
+    userId: currentUserId,
+  });
 
-    const friendIds = friends?.map((f) => f._id) ?? [];
+  const friendIds = friends?.map((f) => f._id) ?? [];
 
-    type IncomingRequest = FunctionReturnType<
+  type IncomingRequest = FunctionReturnType<
     typeof api.friends.getIncomingRequests
-    >[number];
+  >[number];
 
-    type Friend = FunctionReturnType<
+  type Friend = FunctionReturnType<
     typeof api.friends.listFriends
-    >[number];
+  >[number];
 
-    // Mutation
-    const sendFriendRequest = useMutation(api.friends.sendFriendRequest);
-    const respondToRequest = useMutation(api.friends.respondToRequest);
-    const removeFriend = useMutation(api.friends.removeFriend);
+  // Mutations
+  const sendFriendRequest = useMutation(api.friends.sendFriendRequest);
+  const respondToRequest = useMutation(api.friends.respondToRequest);
+  const removeFriend = useMutation(api.friends.removeFriend);
 
-    // Loading pending UI state
-    const handleSend = async (user: { _id: Id<"users"> }) => {
-        if (pending.includes(user._id)) return;
+  const handleSend = async (user: { _id: Id<"users"> }) => {
+    if (pending.includes(user._id)) return;
 
-        setPending((prev) => [...prev, user._id]);
+    setPending((prev) => [...prev, user._id]);
 
-        try {
-            await sendFriendRequest({
-                senderId: currentUserId,
-                receiverId: user._id,
-            });
-        } catch (err) {
-            setPending((prev) => prev.filter(id => id != user._id));
-            Alert.alert("Error", "Failed to send friend request.")
-        }
-    };
+    try {
+      await sendFriendRequest({
+        senderId: currentUserId,
+        receiverId: user._id,
+      });
+    } catch (err) {
+      setPending((prev) => prev.filter((id) => id !== user._id));
+      Alert.alert("Error", "Failed to send friend request.");
+    }
+  };
 
-    // Delete friend with confirmation
-    const handleDeleteFriend = (friendId: Id<"users">) => {
-        Alert.alert(
-            "Remove Friend", 
-            "Are you sure you want to remove this friend?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Remove",
-                    style: "destructive",
-                    onPress: () =>
-                        removeFriend({
-                            userId: currentUserId,
-                            friendId,
-                    }),
-                },
-            ]
-        );
-    };
+  const handleDeleteFriend = (friendId: Id<"users">) => {
+    Alert.alert(
+      "Remove Friend",
+      "Are you sure you want to remove this friend?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () =>
+            removeFriend({
+              userId: currentUserId,
+              friendId,
+            }),
+        },
+      ]
+    );
+  };
 
-      return (
+  return (
     <SafeAreaView style={styles.container}>
       <ThemedView style={{ flex: 1, padding: 16 }}>
         {/* Title */}
@@ -109,7 +115,7 @@ export default function FriendScreen() {
           Friends
         </ThemedText>
 
-        {/* Search Bar */}
+        {/* Search */}
         <TextInput
           placeholder="Search users..."
           placeholderTextColor="#888"
@@ -126,7 +132,6 @@ export default function FriendScreen() {
           }}
         />
 
-        {/* Main FlatList */}
         <FlatList
           data={results ?? []}
           keyExtractor={(item) => item._id.toString()}
@@ -152,13 +157,16 @@ export default function FriendScreen() {
             >
               <ThemedText>
                 {item.username ??
-                  (`${item.firstName ?? ""} ${item.lastName ?? ""}`.trim() ||
-                    "Unknown")}
+                  (`${item.firstName ?? ""} ${
+                    item.lastName ?? ""
+                  }`.trim() || "Unknown")}
               </ThemedText>
 
-              {/* Add Friend Button */}
               <TouchableOpacity
-                disabled={pending.includes(item._id) || friendIds.includes(item._id)}
+                disabled={
+                  pending.includes(item._id) ||
+                  friendIds.includes(item._id)
+                }
                 onPress={() => handleSend(item)}
                 style={{
                   backgroundColor: friendIds.includes(item._id)
@@ -172,14 +180,16 @@ export default function FriendScreen() {
                 }}
               >
                 <ThemedText style={{ color: "white" }}>
-                  {friendIds.includes(item._id) ? "Friends" : "Add Friend"}
+                  {friendIds.includes(item._id)
+                    ? "Friends"
+                    : "Add Friend"}
                 </ThemedText>
               </TouchableOpacity>
             </ThemedView>
           )}
           ListFooterComponent={
             <>
-              {/* Incoming Requests */}
+              {/* Incoming */}
               <ThemedText type="subtitle" style={{ marginTop: 25 }}>
                 Incoming Requests
               </ThemedText>
@@ -213,7 +223,9 @@ export default function FriendScreen() {
                         borderRadius: 6,
                       }}
                     >
-                      <ThemedText style={{ color: "white" }}>Accept</ThemedText>
+                      <ThemedText style={{ color: "white" }}>
+                        Accept
+                      </ThemedText>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -230,13 +242,15 @@ export default function FriendScreen() {
                         borderRadius: 6,
                       }}
                     >
-                      <ThemedText style={{ color: "white" }}>Reject</ThemedText>
+                      <ThemedText style={{ color: "white" }}>
+                        Reject
+                      </ThemedText>
                     </TouchableOpacity>
                   </ThemedView>
                 </ThemedView>
               ))}
 
-              {/* Friends List with two-step menu */}
+              {/* Friends */}
               <ThemedText type="subtitle" style={{ marginTop: 25 }}>
                 My Friends
               </ThemedText>
@@ -260,23 +274,58 @@ export default function FriendScreen() {
                   >
                     <ThemedText>{f.name}</ThemedText>
 
-                    <ThemedView style={{ flexDirection: "row", alignItems: "center" }}>
-                      {/* Three-dot menu */}
+                    <ThemedView
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                      }}
+                    >
+                      {/* MESSAGE BUTTON */}
                       <TouchableOpacity
                         onPress={() =>
-                          setOpenMenuFriendId(openMenuFriendId === f._id ? null : f._id)
+                          router.push({
+                            pathname: "/message",
+                            params: {
+                              friendId: f._id,
+                              friendName: f.name,
+                            },
+                          })
+                        }
+                        style={{
+                          backgroundColor: "#007AFF",
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 6,
+                          marginRight: 8,
+                        }}
+                      >
+                        <ThemedText style={{ color: "white" }}>
+                          Message
+                        </ThemedText>
+                      </TouchableOpacity>
+
+                      {/* Menu */}
+                      <TouchableOpacity
+                        onPress={() =>
+                          setOpenMenuFriendId(
+                            openMenuFriendId === f._id ? null : f._id
+                          )
                         }
                         style={{ padding: 6 }}
                       >
-                        <MaterialIcons name="more-vert" size={24} color={textColor} />
+                        <MaterialIcons
+                          name="more-vert"
+                          size={24}
+                          color={textColor}
+                        />
                       </TouchableOpacity>
 
-                      {/* Delete button appears only when menu is open */}
+                      {/* Delete */}
                       {openMenuFriendId === f._id && (
                         <TouchableOpacity
                           onPress={() => {
-                            setOpenMenuFriendId(null); // close menu
-                            handleDeleteFriend(f._id); // confirmation
+                            setOpenMenuFriendId(null);
+                            handleDeleteFriend(f._id);
                           }}
                           style={{
                             marginLeft: 10,
@@ -286,7 +335,9 @@ export default function FriendScreen() {
                             borderRadius: 6,
                           }}
                         >
-                          <ThemedText style={{ color: "white" }}>Delete</ThemedText>
+                          <ThemedText style={{ color: "white" }}>
+                            Delete
+                          </ThemedText>
                         </TouchableOpacity>
                       )}
                     </ThemedView>

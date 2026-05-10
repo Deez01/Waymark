@@ -170,3 +170,46 @@ export const getProfilePictureUrl = query({
     return await ctx.storage.getUrl(args.storageId);
   },
 });
+
+export const updateAccountSettings = mutation({
+  args: {
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
+    email: v.optional(v.string()),
+  },
+
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+
+    if (!userId) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    const updates = {};
+
+    if (args.firstName !== undefined) {
+      updates.firstName = args.firstName.trim();
+    }
+
+    if (args.lastName !== undefined) {
+      updates.lastName = args.lastName.trim();
+    }
+
+    if (args.email !== undefined) {
+      const email = args.email.trim().toLowerCase();
+
+      const existing = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", email))
+        .first();
+
+      if (existing && existing._id !== userId) {
+        throw new ConvexError("Email already in use.");
+      }
+
+      updates.email = email;
+    }
+
+    await ctx.db.patch(userId, updates);
+  },
+});
