@@ -354,7 +354,7 @@ export default function MapScreen() {
 
     const OFFSET_RADIUS = 0.0005;
 
-    return pins.map((pin) => {
+    return pins.map((pin: any) => {
       const groupKey =
         pin?.isLandmarkMemory && pin?.landmarkKey
           ? `landmark:${pin.landmarkKey}`
@@ -434,10 +434,14 @@ export default function MapScreen() {
         showsMyLocationButton={true}
         mapPadding={{ top: 100, right: 10, bottom: 35, left: 10 }}
         onLongPress={handleLongPress}
-        onPress={() => Keyboard.dismiss()}
+        onPress={() => {
+          Keyboard.dismiss();
+          setPredictions([]); // FIXED: Hides search results when clicking map
+        }}
         onRegionChangeComplete={(region) => setCurrentRegion(region)}
         onPanDrag={() => {
           Keyboard.dismiss();
+          setPredictions([]); // FIXED: Hides search results when moving map
           if (isSheetOpen || isViewSheetOpen) {
             setMinimizeTrigger(prev => prev + 1);
           }
@@ -482,11 +486,7 @@ export default function MapScreen() {
             onSubmitEditing={performSearch}
             blurOnSubmit={false}
             returnKeyType="search"
-            onFocus={() => {
-              if (isViewSheetOpen) {
-                setMinimizeTrigger(prev => prev + 1);
-              }
-            }}
+          // FIXED: Removed the onFocus minimizeTrigger that was causing the keyboard to close instantly
           />
 
           {searchQuery.length > 0 && (
@@ -498,7 +498,7 @@ export default function MapScreen() {
 
         {predictions.length > 0 && (
           <View style={[styles.predictionsContainer, { backgroundColor: theme.background }]}>
-            {predictions.map((p, index) => (
+            {predictions.map((p: any, index: number) => (
               <TouchableOpacity
                 key={p.place_id || index}
                 style={[styles.predictionItem, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#f0f0f0' }]}
