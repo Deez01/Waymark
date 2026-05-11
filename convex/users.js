@@ -213,3 +213,59 @@ export const updateAccountSettings = mutation({
     await ctx.db.patch(userId, updates);
   },
 });
+
+export const changePassword = mutation({
+  args: {
+    currentPassword: v.string(),
+    newPassword: v.string(),
+  },
+
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    // Find user by auth subject (this is the correct way in Convex Auth)
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("_id"), identity.subject))
+      .unique();
+
+    if (!user) {
+      throw new ConvexError("User not found");
+    }
+
+    // Get auth account (where password auth lives)
+    const authAccount = await ctx.db
+      .query("authAccounts")
+      .withIndex("userIdAndProvider", (q) =>
+        q.eq("userId", user._id).eq("provider", "password")
+      )
+      .unique();
+
+    const email =
+      identity.email ||
+      authAccount?.providerAccountId ||
+      user.email;
+
+    if (!email) {
+      throw new ConvexError("No email found");
+    }
+
+    // Verify current password
+    await ctx.runAction("auth:verifyPassword", {
+      email,
+      password: args.currentPassword,
+    });
+
+    // Set new password
+    await ctx.runAction("auth:resetPassword", {
+      email,
+      newPassword: args.newPassword,
+    });
+
+    return true;
+  },
+});

@@ -22,9 +22,16 @@ export default function SettingsScreen() {
 
   const user = useQuery(api.users.getCurrentUser);
 
-  const updateProfile = useMutation(api.users.updateProfile);
+  const updateProfile = useMutation(
+    api.users.updateProfile
+  );
+
   const updateAccountSettings = useMutation(
     api.users.updateAccountSettings
+  );
+
+  const changePassword = useMutation(
+    api.users.changePassword
   );
 
   const profilePictureUrl = useQuery(
@@ -34,11 +41,25 @@ export default function SettingsScreen() {
       : "skip"
   );
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [username, setUsername] = useState("");
+  const [firstName, setFirstName] =
+    useState("");
+
+  const [lastName, setLastName] =
+    useState("");
+
+  const [username, setUsername] =
+    useState("");
+
   const [bio, setBio] = useState("");
-  const [email, setEmail] = useState("");
+
+  const [email, setEmail] =
+    useState("");
+
+  const [currentPassword, setCurrentPassword] =
+    useState("");
+
+  const [newPassword, setNewPassword] =
+    useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -51,27 +72,71 @@ export default function SettingsScreen() {
   }, [user]);
 
   const handleSave = async () => {
-    try {
-      await updateProfile({
-        username,
-        bio,
-      });
+    Alert.alert(
+      "Confirm Changes",
+      "Are you sure you want to save these changes?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Save",
+          onPress: async () => {
+            try {
+              await updateProfile({
+                username,
+                bio,
+              });
 
-      await updateAccountSettings({
-        firstName,
-        lastName,
-        email,
-      });
+              await updateAccountSettings({
+                firstName,
+                lastName,
+                email,
+              });
 
-      Alert.alert("Success", "Settings updated");
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
+              // PASSWORD CHANGE
+              if (
+                currentPassword.trim() &&
+                newPassword.trim()
+              ) {
+                await changePassword({
+                  oldPassword:
+                    currentPassword,
+                  newPassword,
+                });
+              }
+
+              Alert.alert(
+                "Success",
+                "Settings updated successfully"
+              );
+
+              setCurrentPassword("");
+              setNewPassword("");
+            } catch (e: any) {
+              Alert.alert(
+                "Error",
+                e.message
+              );
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const backgroundColor = isDark ? "#121212" : "#fff";
-  const textColor = isDark ? "#fff" : "#000";
-  const inputBg = isDark ? "#1f1f1f" : "#f3f3f3";
+  const backgroundColor = isDark
+    ? "#121212"
+    : "#fff";
+
+  const textColor = isDark
+    ? "#fff"
+    : "#000";
+
+  const inputBg = isDark
+    ? "#1f1f1f"
+    : "#f3f3f3";
 
   if (!user) return null;
 
@@ -82,15 +147,32 @@ export default function SettingsScreen() {
         backgroundColor,
       }}
     >
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: 20,
+        }}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          style={{ marginBottom: 20 }}
+          style={{
+            marginBottom: 20,
+          }}
         >
-          <Text style={{ color: textColor }}>Back</Text>
+          <Text
+            style={{
+              color: textColor,
+            }}
+          >
+            Back
+          </Text>
         </TouchableOpacity>
 
-        <View style={{ alignItems: "center", marginBottom: 25 }}>
+        <View
+          style={{
+            alignItems: "center",
+            marginBottom: 25,
+          }}
+        >
           <ProfileImage
             uri={profilePictureUrl}
             editable
@@ -128,6 +210,28 @@ export default function SettingsScreen() {
           onChangeText={setEmail}
           textColor={textColor}
           inputBg={inputBg}
+        />
+
+        {/* PASSWORDS */}
+
+        <SettingInput
+          label="Current Password"
+          value={currentPassword}
+          onChangeText={
+            setCurrentPassword
+          }
+          textColor={textColor}
+          inputBg={inputBg}
+          secureTextEntry
+        />
+
+        <SettingInput
+          label="New Password"
+          value={newPassword}
+          onChangeText={setNewPassword}
+          textColor={textColor}
+          inputBg={inputBg}
+          secureTextEntry
         />
 
         <SettingInput
@@ -170,9 +274,14 @@ function SettingInput({
   textColor,
   inputBg,
   multiline = false,
+  secureTextEntry = false,
 }: any) {
   return (
-    <View style={{ marginBottom: 16 }}>
+    <View
+      style={{
+        marginBottom: 16,
+      }}
+    >
       <Text
         style={{
           color: textColor,
@@ -187,13 +296,21 @@ function SettingInput({
         value={value}
         onChangeText={onChangeText}
         multiline={multiline}
+        secureTextEntry={
+          secureTextEntry
+        }
         style={{
           backgroundColor: inputBg,
           padding: 14,
           borderRadius: 12,
           color: textColor,
-          minHeight: multiline ? 100 : undefined,
-          textAlignVertical: multiline ? "top" : "center",
+          minHeight: multiline
+            ? 100
+            : undefined,
+          textAlignVertical:
+            multiline
+              ? "top"
+              : "center",
         }}
       />
     </View>

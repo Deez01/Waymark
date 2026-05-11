@@ -2,24 +2,25 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  Alert,
+  Dimensions,
   FlatList,
   Modal,
   Pressable,
-  ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   useColorScheme,
-  View,
+  View
 } from "react-native";
+import ImageViewing from "react-native-image-viewing";
 import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import ProfileImage from "@/components/ProfileImage";
 import { api } from "../../convex/_generated/api";
+
+const { width } = Dimensions.get("window");
 
 export default function UserScreen() {
   const colorScheme = useColorScheme();
@@ -35,13 +36,10 @@ export default function UserScreen() {
 
   const profilePictureUrl = useQuery(
     api.users.getProfilePictureUrl,
-    user?.profilePicture
-      ? { storageId: user.profilePicture }
-      : "skip"
+    user?.profilePicture ? { storageId: user.profilePicture } : "skip"
   );
 
   const updateProfile = useMutation(api.users.updateProfile);
-
   const { signOut } = useAuthActions();
 
   const [editing, setEditing] = useState(false);
@@ -49,41 +47,33 @@ export default function UserScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [bio, setBio] = useState("");
 
-  // POST VIEWER
   const [selectedPin, setSelectedPin] = useState<any | null>(null);
+
+  //  carousel state
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [zoomVisible, setZoomVisible] = useState(false);
 
   const selectedPinPictures = useQuery(
     api.pins.getPinPictures,
-    selectedPin
-      ? { pinId: selectedPin._id }
-      : "skip"
+    selectedPin ? { pinId: selectedPin._id } : "skip"
   );
 
   const selectedPinTags = useQuery(
     api.pinTags.getTagsForPin,
-    selectedPin
-      ? { pinId: selectedPin._id }
-      : "skip"
+    selectedPin ? { pinId: selectedPin._id } : "skip"
   );
+
+  const imageUrls = useMemo(() => {
+    return (
+      selectedPinPictures?.map((p: any) => ({
+        uri: p.url,
+      })) || []
+    );
+  }, [selectedPinPictures]);
 
   if (!user) return <Text>Loading...</Text>;
 
-  const handleEdit = () => {
-    setBio(user.bio || "");
-    setEditing(true);
-  };
-
-  const handleSave = async () => {
-    try {
-      await updateProfile({ bio });
-
-      setEditing(false);
-
-      Alert.alert("Profile updated!");
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
+  const isPosts = activeTab === "posts";
 
   const backgroundColor = isDark ? "#121212" : "#fff";
   const textColor = isDark ? "#fff" : "#000";
@@ -94,37 +84,18 @@ export default function UserScreen() {
       <View style={{ padding: 16 }}>
 
         {/* TOP BAR */}
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 18,
-              fontWeight: "700",
-              color: textColor,
-            }}
-          >
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: textColor }}>
             {user.username}
           </Text>
 
           <TouchableOpacity onPress={() => setMenuVisible(true)}>
-            <Text style={{ fontSize: 22, color: textColor }}>
-              ⋯
-            </Text>
+            <Text style={{ fontSize: 22, color: textColor }}>⋯</Text>
           </TouchableOpacity>
         </View>
 
         {/* PROFILE */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginTop: 15,
-          }}
-        >
+        <View style={{ flexDirection: "row", marginTop: 15 }}>
           <ProfileImage
             uri={profilePictureUrl}
             size={90}
@@ -132,16 +103,9 @@ export default function UserScreen() {
           />
 
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text
-              style={{
-                fontSize: 18,
-                fontWeight: "700",
-                color: textColor,
-              }}
-            >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: textColor }}>
               {user.firstName || ""} {user.lastName || ""}
             </Text>
-
             <Text style={{ color: subTextColor }}>
               {user.bio || "No bio yet"}
             </Text>
@@ -149,103 +113,33 @@ export default function UserScreen() {
         </View>
 
         {/* STATS */}
-        <View
-          style={{
-            flexDirection: "row",
-            marginTop: 12,
-            justifyContent: "space-around",
-          }}
-        >
-          <Stat
-            label="Pins"
-            value={pins?.length || 0}
-          />
-
-          <Stat
-            label="Badges"
-            value={overview?.earnedBadges?.length || 0}
-          />
-
-          <Stat
-            label="Friends"
-            value={friends?.length || 0}
-          />
+        <View style={{ flexDirection: "row", marginTop: 12, justifyContent: "space-around" }}>
+          <Stat label="Pins" value={pins?.length || 0} />
+          <Stat label="Badges" value={overview?.earnedBadges?.length || 0} />
+          <Stat label="Friends" value={friends?.length || 0} />
         </View>
 
-        {/* EDIT */}
-        {!editing ? (
-          <TouchableOpacity
-            onPress={handleEdit}
-            style={{ marginTop: 12 }}
-          >
-            <Text style={{ color: textColor }}>
-              Edit Profile
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <>
-            <TextInput
-              value={bio}
-              onChangeText={setBio}
-              placeholder="Bio"
-              placeholderTextColor={subTextColor}
-              style={{
-                borderWidth: 1,
-                marginTop: 10,
-                padding: 6,
-                color: textColor,
-              }}
-            />
-
-            <TouchableOpacity onPress={handleSave}>
-              <Text
-                style={{
-                  color: "green",
-                  marginTop: 10,
-                }}
-              >
-                Save
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-
         {/* TABS */}
-        <View
-          style={{
-            flexDirection: "row",
-            marginTop: 20,
-          }}
-        >
-          <Tab
-            label="Posts"
-            active={activeTab === "posts"}
-            onPress={() => setActiveTab("posts")}
-          />
-
-          <Tab
-            label="Achievements"
-            active={activeTab === "achievements"}
-            onPress={() => setActiveTab("achievements")}
-          />
+        <View style={{ flexDirection: "row", marginTop: 20 }}>
+          <Tab label="Posts" active={isPosts} onPress={() => setActiveTab("posts")} />
+          <Tab label="Achievements" active={!isPosts} onPress={() => setActiveTab("achievements")} />
         </View>
       </View>
 
-      {/* POSTS */}
-      {activeTab === "posts" ? (
-        <FlatList
-          key="posts"
-          data={pins || []}
-          numColumns={3}
-          keyExtractor={(i) => i._id.toString()}
-          renderItem={({ item }) => (
+      {/* GRID */}
+      <FlatList
+        key={isPosts ? "grid" : "list"}
+        data={isPosts ? pins || [] : overview?.earnedBadges || []}
+        numColumns={isPosts ? 3 : 1}
+        keyExtractor={(i: any) => i._id.toString()}
+        renderItem={({ item }: any) =>
+          isPosts ? (
             <TouchableOpacity
-              style={{
-                width: "33.33%",
-                aspectRatio: 1,
-                padding: 1,
+              style={{ width: "33.33%", aspectRatio: 1, padding: 1 }}
+              onPress={() => {
+                setSelectedPin(item);
+                setActiveImageIndex(0);
               }}
-              onPress={() => setSelectedPin(item)}
             >
               <Animated.Image
                 source={{
@@ -254,230 +148,132 @@ export default function UserScreen() {
                     item.thumbnail ||
                     "https://via.placeholder.com/150",
                 }}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                }}
+                style={{ width: "100%", height: "100%" }}
               />
             </TouchableOpacity>
-          )}
-        />
-      ) : (
-        <FlatList
-          key="achievements"
-          data={overview?.earnedBadges || []}
-          keyExtractor={(i) => i._id.toString()}
-          renderItem={({ item }) => (
+          ) : (
             <View style={{ padding: 10 }}>
-              <Text style={{ color: textColor }}>
-                {item.badgeKey}
-              </Text>
+              <Text style={{ color: textColor }}>{item.badgeKey}</Text>
             </View>
-          )}
-        />
-      )}
+          )
+        }
+      />
 
-      {/* INSTAGRAM STYLE POST VIEWER */}
-      <Modal
-        visible={!!selectedPin}
-        animationType="slide"
-      >
-        <SafeAreaView
-          style={{
-            flex: 1,
-            backgroundColor,
-          }}
-        >
-          <ScrollView>
+      {/* POST MODAL */}
+      <Modal visible={!!selectedPin} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor }}>
 
-            {/* CLOSE */}
-            <TouchableOpacity
-              onPress={() => setSelectedPin(null)}
-              style={{
-                padding: 15,
-              }}
-            >
-              <Text
-                style={{
-                  color: textColor,
-                  fontSize: 16,
+          {/* CLOSE */}
+          <TouchableOpacity onPress={() => setSelectedPin(null)} style={{ padding: 15 }}>
+            <Text style={{ color: textColor }}>Close</Text>
+          </TouchableOpacity>
+
+          {/* IMAGE CAROUSEL */}
+          {selectedPinPictures?.length > 0 && (
+            <View>
+              <FlatList
+                data={selectedPinPictures}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.storageId}
+                onMomentumScrollEnd={(e) => {
+                  const index = Math.round(
+                    e.nativeEvent.contentOffset.x / width
+                  );
+                  setActiveImageIndex(index);
                 }}
-              >
-                Close
-              </Text>
-            </TouchableOpacity>
-
-            {/* PHOTOS */}
-            {selectedPinPictures?.map((picture: any) => (
-              <View key={picture.storageId}>
-                <Image
-                  source={{ uri: picture.url }}
-                  style={{
-                    width: "100%",
-                    height: 400,
-                  }}
-                  contentFit="cover"
-                />
-
-                {picture.caption ? (
-                  <Text
-                    style={{
-                      color: textColor,
-                      padding: 12,
-                      fontSize: 15,
-                    }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={() => setZoomVisible(true)}
                   >
-                    {picture.caption}
-                  </Text>
-                ) : null}
-              </View>
-            ))}
+                    <Image
+                      source={{ uri: item.url }}
+                      style={{ width, height: 400 }}
+                      contentFit="cover"
+                    />
+                  </TouchableOpacity>
+                )}
+              />
 
-            <View style={{ padding: 16 }}>
-
-              {/* TITLE */}
-              <Text
-                style={{
-                  color: textColor,
-                  fontSize: 24,
-                  fontWeight: "700",
-                }}
-              >
-                {selectedPin?.title}
-              </Text>
-
-              {/* DESCRIPTION */}
-              {selectedPin?.description ? (
-                <Text
-                  style={{
-                    color: subTextColor,
-                    marginTop: 10,
-                    lineHeight: 22,
-                  }}
-                >
-                  {selectedPin.description}
-                </Text>
-              ) : null}
-
-              {/* ADDRESS */}
-              {selectedPin?.address ? (
-                <Text
-                  style={{
-                    color: subTextColor,
-                    marginTop: 10,
-                  }}
-                >
-                  📍 {selectedPin.address}
-                </Text>
-              ) : null}
-
-              {/* TAGS */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  marginTop: 18,
-                }}
-              >
-                {selectedPinTags?.map((tag: any) => (
+              {/* DOTS */}
+              <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 8 }}>
+                {selectedPinPictures.map((_: any, i: number) => (
                   <View
-                    key={tag._id}
+                    key={i}
                     style={{
-                      backgroundColor:
-                        tag.color || "#3b82f6",
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                      borderRadius: 20,
-                      marginRight: 8,
-                      marginBottom: 8,
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      margin: 3,
+                      backgroundColor: i === activeImageIndex ? "#fff" : "#555",
                     }}
-                  >
-                    <Text
-                      style={{
-                        color: "#fff",
-                        fontWeight: "600",
-                      }}
-                    >
-                      #{tag.name}
-                    </Text>
-                  </View>
+                  />
                 ))}
               </View>
-
-              {/* DATE */}
-              <Text
-                style={{
-                  color: subTextColor,
-                  marginTop: 18,
-                  fontSize: 13,
-                }}
-              >
-                {selectedPin?.createdAt
-                  ? new Date(
-                      selectedPin.createdAt
-                    ).toLocaleDateString()
-                  : ""}
-              </Text>
             </View>
-          </ScrollView>
+          )}
+
+          {/* DETAILS */}
+          <View style={{ padding: 16 }}>
+            <Text style={{ color: textColor, fontSize: 24, fontWeight: "700" }}>
+              {selectedPin?.title}
+            </Text>
+
+            {selectedPin?.description && (
+              <Text style={{ color: subTextColor, marginTop: 10 }}>
+                {selectedPin.description}
+              </Text>
+            )}
+
+            {/* TAGS */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 18 }}>
+              {selectedPinTags?.map((tag: any) => (
+                <View
+                  key={tag._id}
+                  style={{
+                    backgroundColor: tag.color || "#3b82f6",
+                    paddingHorizontal: 12,
+                    paddingVertical: 7,
+                    borderRadius: 20,
+                    marginRight: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={{ color: "#fff" }}>#{tag.name}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
         </SafeAreaView>
       </Modal>
 
+      {/* ZOOM VIEW */}
+      <ImageViewing
+        images={imageUrls}
+        imageIndex={activeImageIndex}
+        visible={zoomVisible}
+        onRequestClose={() => setZoomVisible(false)}
+      />
+
       {/* MENU */}
-      <Modal
-        transparent
-        visible={menuVisible}
-        animationType="slide"
-      >
+      <Modal transparent visible={menuVisible}>
         <Pressable
-          style={{
-            flex: 1,
-            backgroundColor:
-              "rgba(0,0,0,0.3)",
-            justifyContent: "flex-end",
-          }}
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "flex-end" }}
           onPress={() => setMenuVisible(false)}
         >
-          <View
-            style={{
-              backgroundColor,
-              padding: 20,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() =>
-                router.push("/timeline")
-              }
-            >
-              <Text
-                style={{
-                  color: textColor,
-                  marginBottom: 10,
-                }}
-              >
-                View Timeline
-              </Text>
+          <View style={{ backgroundColor, padding: 20 }}>
+            <TouchableOpacity onPress={() => router.push("/timeline")}>
+              <Text style={{ color: textColor }}>View Timeline</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() =>
-                router.push("/settings")
-              }
-            >
-              <Text
-                style={{
-                  color: textColor,
-                  marginBottom: 10,
-                }}
-              >
-                Settings
-              </Text>
+            <TouchableOpacity onPress={() => router.push("/settings")}>
+              <Text style={{ color: textColor, marginTop: 10 }}>Settings</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={signOut}>
-              <Text style={{ color: "red" }}>
-                Sign Out
-              </Text>
+              <Text style={{ color: "red", marginTop: 10 }}>Sign Out</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -491,10 +287,7 @@ export default function UserScreen() {
 function Stat({ label, value }: any) {
   return (
     <View style={{ alignItems: "center" }}>
-      <Text style={{ fontWeight: "700" }}>
-        {value}
-      </Text>
-
+      <Text style={{ fontWeight: "700" }}>{value}</Text>
       <Text>{label}</Text>
     </View>
   );
@@ -502,16 +295,8 @@ function Stat({ label, value }: any) {
 
 function Tab({ label, active, onPress }: any) {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{ flex: 1 }}
-    >
-      <Text
-        style={{
-          textAlign: "center",
-          fontWeight: active ? "700" : "400",
-        }}
-      >
+    <TouchableOpacity onPress={onPress} style={{ flex: 1 }}>
+      <Text style={{ textAlign: "center", fontWeight: active ? "700" : "400" }}>
         {label}
       </Text>
     </TouchableOpacity>
