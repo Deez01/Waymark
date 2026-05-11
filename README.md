@@ -4,11 +4,14 @@
 ```bash 
 npm install
 ```
-```bash 
-npx expo start
-```
 ```bash
 npx convex dev
+```
+```bash
+npx expo start
+or 
+npx expo start -c 
+
 ```
 
 ***Choose an existing project and select "beritcheema" and "waymark", then select cloud deployment.***
