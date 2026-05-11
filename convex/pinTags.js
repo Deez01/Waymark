@@ -185,9 +185,9 @@ export const getPinTagsWithDetails = query({
     const userId = assertAuthed(await getAuthUserId(ctx));
     const pin = await ctx.db.get(args.pinId);
     
-    if (!pin) {
-      throw new Error("Pin not found");
-    }
+      if (!pin) {
+        return [];
+      }
 
     const canView = await canUserViewPin(ctx, userId, args.pinId);
     if (!canView) {
@@ -337,7 +337,7 @@ export const removeTagFromPin = mutation({
     const pin = await ctx.db.get(args.pinId);
 
     if (!pin) {
-      throw new Error("Pin not found");
+      return [];
     }
 
     const canEdit = await canUserEditPin(ctx, userId, args.pinId);
