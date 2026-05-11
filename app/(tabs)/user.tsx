@@ -11,7 +11,7 @@ import {
   Text,
   TouchableOpacity,
   useColorScheme,
-  View
+  View,
 } from "react-native";
 import ImageViewing from "react-native-image-viewing";
 import Animated from "react-native-reanimated";
@@ -25,6 +25,10 @@ const { width } = Dimensions.get("window");
 export default function UserScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
+
+  const backgroundColor = isDark ? "#121212" : "#fff";
+  const textColor = isDark ? "#fff" : "#000";
+  const subTextColor = isDark ? "#aaa" : "#666";
 
   const user = useQuery(api.users.getCurrentUser);
   const overview = useQuery(api.achievements.getOverview);
@@ -49,7 +53,7 @@ export default function UserScreen() {
 
   const [selectedPin, setSelectedPin] = useState<any | null>(null);
 
-  //  carousel state
+  // carousel state
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [zoomVisible, setZoomVisible] = useState(false);
 
@@ -71,21 +75,40 @@ export default function UserScreen() {
     );
   }, [selectedPinPictures]);
 
-  if (!user) return <Text>Loading...</Text>;
+  if (!user) {
+    return (
+      <SafeAreaView
+        style={{
+          flex: 1,
+          backgroundColor,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: textColor }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
 
   const isPosts = activeTab === "posts";
-
-  const backgroundColor = isDark ? "#121212" : "#fff";
-  const textColor = isDark ? "#fff" : "#000";
-  const subTextColor = isDark ? "#aaa" : "#666";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor }}>
       <View style={{ padding: 16 }}>
-
         {/* TOP BAR */}
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: textColor }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 18,
+              fontWeight: "700",
+              color: textColor,
+            }}
+          >
             {user.username}
           </Text>
 
@@ -103,9 +126,16 @@ export default function UserScreen() {
           />
 
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: textColor }}>
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: "700",
+                color: textColor,
+              }}
+            >
               {user.firstName || ""} {user.lastName || ""}
             </Text>
+
             <Text style={{ color: subTextColor }}>
               {user.bio || "No bio yet"}
             </Text>
@@ -113,16 +143,47 @@ export default function UserScreen() {
         </View>
 
         {/* STATS */}
-        <View style={{ flexDirection: "row", marginTop: 12, justifyContent: "space-around" }}>
-          <Stat label="Pins" value={pins?.length || 0} />
-          <Stat label="Badges" value={overview?.earnedBadges?.length || 0} />
-          <Stat label="Friends" value={friends?.length || 0} />
+        <View
+          style={{
+            flexDirection: "row",
+            marginTop: 12,
+            justifyContent: "space-around",
+          }}
+        >
+          <Stat
+            label="Pins"
+            value={pins?.length || 0}
+            isDark={isDark}
+          />
+
+          <Stat
+            label="Badges"
+            value={overview?.earnedBadges?.length || 0}
+            isDark={isDark}
+          />
+
+          <Stat
+            label="Friends"
+            value={friends?.length || 0}
+            isDark={isDark}
+          />
         </View>
 
         {/* TABS */}
         <View style={{ flexDirection: "row", marginTop: 20 }}>
-          <Tab label="Posts" active={isPosts} onPress={() => setActiveTab("posts")} />
-          <Tab label="Achievements" active={!isPosts} onPress={() => setActiveTab("achievements")} />
+          <Tab
+            label="Posts"
+            active={isPosts}
+            isDark={isDark}
+            onPress={() => setActiveTab("posts")}
+          />
+
+          <Tab
+            label="Achievements"
+            active={!isPosts}
+            isDark={isDark}
+            onPress={() => setActiveTab("achievements")}
+          />
         </View>
       </View>
 
@@ -135,7 +196,11 @@ export default function UserScreen() {
         renderItem={({ item }: any) =>
           isPosts ? (
             <TouchableOpacity
-              style={{ width: "33.33%", aspectRatio: 1, padding: 1 }}
+              style={{
+                width: "33.33%",
+                aspectRatio: 1,
+                padding: 1,
+              }}
               onPress={() => {
                 setSelectedPin(item);
                 setActiveImageIndex(0);
@@ -148,12 +213,17 @@ export default function UserScreen() {
                     item.thumbnail ||
                     "https://via.placeholder.com/150",
                 }}
-                style={{ width: "100%", height: "100%" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                }}
               />
             </TouchableOpacity>
           ) : (
             <View style={{ padding: 10 }}>
-              <Text style={{ color: textColor }}>{item.badgeKey}</Text>
+              <Text style={{ color: textColor }}>
+                {item.badgeKey}
+              </Text>
             </View>
           )
         }
@@ -162,9 +232,11 @@ export default function UserScreen() {
       {/* POST MODAL */}
       <Modal visible={!!selectedPin} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor }}>
-
           {/* CLOSE */}
-          <TouchableOpacity onPress={() => setSelectedPin(null)} style={{ padding: 15 }}>
+          <TouchableOpacity
+            onPress={() => setSelectedPin(null)}
+            style={{ padding: 15 }}
+          >
             <Text style={{ color: textColor }}>Close</Text>
           </TouchableOpacity>
 
@@ -190,7 +262,10 @@ export default function UserScreen() {
                   >
                     <Image
                       source={{ uri: item.url }}
-                      style={{ width, height: 400 }}
+                      style={{
+                        width,
+                        height: 400,
+                      }}
                       contentFit="cover"
                     />
                   </TouchableOpacity>
@@ -198,7 +273,13 @@ export default function UserScreen() {
               />
 
               {/* DOTS */}
-              <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 8 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  marginTop: 8,
+                }}
+              >
                 {selectedPinPictures.map((_: any, i: number) => (
                   <View
                     key={i}
@@ -207,7 +288,14 @@ export default function UserScreen() {
                       height: 6,
                       borderRadius: 3,
                       margin: 3,
-                      backgroundColor: i === activeImageIndex ? "#fff" : "#555",
+                      backgroundColor:
+                        i === activeImageIndex
+                          ? isDark
+                            ? "#fff"
+                            : "#000"
+                          : isDark
+                          ? "#777"
+                          : "#ccc",
                     }}
                   />
                 ))}
@@ -217,18 +305,35 @@ export default function UserScreen() {
 
           {/* DETAILS */}
           <View style={{ padding: 16 }}>
-            <Text style={{ color: textColor, fontSize: 24, fontWeight: "700" }}>
+            <Text
+              style={{
+                color: textColor,
+                fontSize: 24,
+                fontWeight: "700",
+              }}
+            >
               {selectedPin?.title}
             </Text>
 
             {selectedPin?.description && (
-              <Text style={{ color: subTextColor, marginTop: 10 }}>
+              <Text
+                style={{
+                  color: subTextColor,
+                  marginTop: 10,
+                }}
+              >
                 {selectedPin.description}
               </Text>
             )}
 
             {/* TAGS */}
-            <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 18 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                marginTop: 18,
+              }}
+            >
               {selectedPinTags?.map((tag: any) => (
                 <View
                   key={tag._id}
@@ -241,7 +346,9 @@ export default function UserScreen() {
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: "#fff" }}>#{tag.name}</Text>
+                  <Text style={{ color: "#fff" }}>
+                    #{tag.name}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -260,20 +367,45 @@ export default function UserScreen() {
       {/* MENU */}
       <Modal transparent visible={menuVisible}>
         <Pressable
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "flex-end" }}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.3)",
+            justifyContent: "flex-end",
+          }}
           onPress={() => setMenuVisible(false)}
         >
-          <View style={{ backgroundColor, padding: 20 }}>
+          <View
+            style={{
+              backgroundColor,
+              padding: 20,
+            }}
+          >
             <TouchableOpacity onPress={() => router.push("/timeline")}>
-              <Text style={{ color: textColor }}>View Timeline</Text>
+              <Text style={{ color: textColor }}>
+                View Timeline
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => router.push("/settings")}>
-              <Text style={{ color: textColor, marginTop: 10 }}>Settings</Text>
+              <Text
+                style={{
+                  color: textColor,
+                  marginTop: 10,
+                }}
+              >
+                Settings
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={signOut}>
-              <Text style={{ color: "red", marginTop: 10 }}>Sign Out</Text>
+              <Text
+                style={{
+                  color: "red",
+                  marginTop: 10,
+                }}
+              >
+                Sign Out
+              </Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -284,19 +416,51 @@ export default function UserScreen() {
 
 /* COMPONENTS */
 
-function Stat({ label, value }: any) {
+function Stat({ label, value, isDark }: any) {
+  const textColor = isDark ? "#fff" : "#000";
+  const subTextColor = isDark ? "#aaa" : "#666";
+
   return (
     <View style={{ alignItems: "center" }}>
-      <Text style={{ fontWeight: "700" }}>{value}</Text>
-      <Text>{label}</Text>
+      <Text
+        style={{
+          fontWeight: "700",
+          color: textColor,
+        }}
+      >
+        {value}
+      </Text>
+
+      <Text style={{ color: subTextColor }}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-function Tab({ label, active, onPress }: any) {
+function Tab({ label, active, onPress, isDark }: any) {
+  const textColor = isDark ? "#fff" : "#000";
+  const inactiveColor = isDark ? "#888" : "#777";
+
   return (
-    <TouchableOpacity onPress={onPress} style={{ flex: 1 }}>
-      <Text style={{ textAlign: "center", fontWeight: active ? "700" : "400" }}>
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        flex: 1,
+        paddingBottom: 10,
+        borderBottomWidth: active ? 2 : 0,
+        borderBottomColor: active
+          ? textColor
+          : "transparent",
+      }}
+    >
+      <Text
+        style={{
+          textAlign: "center",
+          fontWeight: active ? "700" : "400",
+          color: active ? textColor : inactiveColor,
+        }}
+      >
         {label}
       </Text>
     </TouchableOpacity>
