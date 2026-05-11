@@ -2,22 +2,24 @@
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import ViewEditPinSheet from "@/components/ViewEditPinSheet";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useState } from "react";
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  Alert,
-  FlatList,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
-import { router } from "expo-router";
 
 const styles = StyleSheet.create({
   container: {
@@ -34,6 +36,13 @@ export default function FriendScreen() {
   const [pending, setPending] = useState<Id<"users">[]>([]);
   const [openMenuFriendId, setOpenMenuFriendId] =
     useState<Id<"users"> | null>(null);
+  const [shareResponding, setShareResponding] = useState<Id<"sharedPins">[]>([]);
+  const [previewRequestId, setPreviewRequestId] = useState<Id<"sharedPins"> | null>(null);
+  const [previewPinId, setPreviewPinId] = useState<Id<"pins"> | null>(null);
+  const [selectedPreviewPin, setSelectedPreviewPin] = useState<any | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isAwaitingPreview, setIsAwaitingPreview] = useState(false);
+  const [previewOpenTrigger, setPreviewOpenTrigger] = useState(0);
 
   // Current User
   const currentUser = useQuery(api.users.getCurrentUser);
@@ -57,6 +66,12 @@ export default function FriendScreen() {
     userId: currentUserId,
   });
 
+  const incomingShareRequests = useQuery(api.pins.getIncomingShareRequests);
+  const previewPin = useQuery(
+    api.pins.getPinById,
+    previewPinId ? { pinId: previewPinId } : "skip"
+  );
+
   const friendIds = friends?.map((f) => f._id) ?? [];
 
   type IncomingRequest = FunctionReturnType<
@@ -67,10 +82,15 @@ export default function FriendScreen() {
     typeof api.friends.listFriends
   >[number];
 
+  type IncomingShareRequest = FunctionReturnType<
+    typeof api.pins.getIncomingShareRequests
+  >[number];
+
   // Mutations
   const sendFriendRequest = useMutation(api.friends.sendFriendRequest);
   const respondToRequest = useMutation(api.friends.respondToRequest);
   const removeFriend = useMutation(api.friends.removeFriend);
+  const respondToShareRequest = useMutation(api.pins.respondToShareRequest);
 
   const handleSend = async (user: { _id: Id<"users"> }) => {
     if (pending.includes(user._id)) return;
@@ -106,6 +126,59 @@ export default function FriendScreen() {
       ]
     );
   };
+
+  const handleRespondToShare = async (
+    requestId: Id<"sharedPins">,
+    action: "accepted" | "rejected"
+  ) => {
+    if (shareResponding.includes(requestId)) return;
+    setShareResponding((prev) => [...prev, requestId]);
+
+    if (previewRequestId === requestId) {
+      setIsPreviewOpen(false);
+      setIsAwaitingPreview(false);
+      setPreviewRequestId(null);
+      setPreviewPinId(null);
+      setSelectedPreviewPin(null);
+    }
+
+    try {
+      await respondToShareRequest({ requestId, action });
+    } catch (err: any) {
+      Alert.alert("Error", err?.message ?? "Failed to respond to share request.");
+    } finally {
+      setShareResponding((prev) => prev.filter((id) => id !== requestId));
+    }
+  };
+
+  const handlePreviewShare = (requestId: Id<"sharedPins">, pinId: Id<"pins">) => {
+    setIsPreviewOpen(false);
+    setSelectedPreviewPin(null);
+    setIsAwaitingPreview(true);
+    setPreviewRequestId(requestId);
+    setPreviewPinId(pinId);
+  };
+
+  useEffect(() => {
+    if (!isAwaitingPreview) return;
+    if (!previewPinId) return;
+    if (previewPin === undefined) return;
+
+    if (previewPin === null) {
+      Alert.alert("Preview unavailable", "This shared pin is no longer available to preview.");
+      setIsPreviewOpen(false);
+      setIsAwaitingPreview(false);
+      setPreviewRequestId(null);
+      setPreviewPinId(null);
+      setSelectedPreviewPin(null);
+      return;
+    }
+
+    setSelectedPreviewPin(previewPin);
+    setIsPreviewOpen(true);
+    setIsAwaitingPreview(false);
+    setPreviewOpenTrigger((prev) => prev + 1);
+  }, [isAwaitingPreview, previewPinId, previewPin]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -344,10 +417,103 @@ export default function FriendScreen() {
                   </ThemedView>
                 ))
               )}
+
+              <ThemedText type="subtitle" style={{ marginTop: 25 }}>
+                Incoming Pin Shares
+              </ThemedText>
+
+              {incomingShareRequests === undefined ? (
+                <ThemedText style={{ marginTop: 5 }}>Loading shares...</ThemedText>
+              ) : incomingShareRequests.length === 0 ? (
+                <ThemedText style={{ marginTop: 5 }}>No incoming pin shares.</ThemedText>
+              ) : (
+                incomingShareRequests.map((share: IncomingShareRequest) => {
+                  if (!share) return null;
+                  const isLoading = shareResponding.includes(share.requestId);
+                  const isPreviewLoading = previewPinId?.toString() === share.pinId.toString() && isAwaitingPreview;
+
+                  return (
+                    <ThemedView
+                      key={share.requestId.toString()}
+                      style={{
+                        paddingVertical: 10,
+                        borderBottomWidth: 0.5,
+                        borderBottomColor: borderColor,
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => handlePreviewShare(share.requestId, share.pinId)}
+                        disabled={isLoading || isPreviewLoading}
+                      >
+                        <ThemedText style={{ fontWeight: "600" }}>{share.pinTitle}</ThemedText>
+                        <ThemedText style={{ opacity: 0.8 }}>Shared by {share.sharedByName}</ThemedText>
+                        {share.pinAddress ? (
+                          <ThemedText style={{ opacity: 0.7, marginTop: 2 }} numberOfLines={1}>
+                            {share.pinAddress}
+                          </ThemedText>
+                        ) : null}
+                        {isPreviewLoading ? (
+                          <ThemedView style={{ flexDirection: "row", alignItems: "center", marginTop: 6, gap: 8 }}>
+                            <ActivityIndicator size="small" color="#62a0ea" />
+                            <ThemedText style={{ opacity: 0.7, fontSize: 12 }}>
+                              Loading preview...
+                            </ThemedText>
+                          </ThemedView>
+                        ) : (
+                          <ThemedText style={{ opacity: 0.6, marginTop: 4, fontSize: 12 }}>
+                            Tap to preview pin details
+                          </ThemedText>
+                        )}
+                      </TouchableOpacity>
+
+                      <ThemedView style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => handleRespondToShare(share.requestId, "accepted")}
+                          disabled={isLoading}
+                          style={{
+                            backgroundColor: "#34C759",
+                            padding: 6,
+                            borderRadius: 6,
+                            opacity: isLoading ? 0.6 : 1,
+                          }}
+                        >
+                          <ThemedText style={{ color: "white" }}>Accept</ThemedText>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => handleRespondToShare(share.requestId, "rejected")}
+                          disabled={isLoading}
+                          style={{
+                            backgroundColor: "#FF3B30",
+                            padding: 6,
+                            borderRadius: 6,
+                            opacity: isLoading ? 0.6 : 1,
+                          }}
+                        >
+                          <ThemedText style={{ color: "white" }}>Reject</ThemedText>
+                        </TouchableOpacity>
+                      </ThemedView>
+                    </ThemedView>
+                  );
+                })
+              )}
             </>
           }
         />
       </ThemedView>
+
+      <ViewEditPinSheet
+        isOpen={isPreviewOpen}
+        onClose={() => {
+          setIsPreviewOpen(false);
+          setIsAwaitingPreview(false);
+          setPreviewRequestId(null);
+          setPreviewPinId(null);
+          setSelectedPreviewPin(null);
+        }}
+        pin={isPreviewOpen ? selectedPreviewPin : null}
+        openTrigger={previewOpenTrigger}
+      />
     </SafeAreaView>
   );
 }

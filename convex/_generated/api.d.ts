@@ -25,9 +25,9 @@ import type * as timeline from "../timeline.js";
 import type * as users from "../users.js";
 
 import type {
-    ApiFromModules,
-    FilterApi,
-    FunctionReference,
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{

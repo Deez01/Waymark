@@ -776,7 +776,7 @@ export default function MapScreen() {
           pin.lng
         ),
       }))
-      .filter(({ distanceKm }) => distanceKm > 0.01)
+      .filter(({ distanceKm }: { distanceKm: number }) => distanceKm > 0.01)
       .sort((a: any, b: any) => a.distanceKm - b.distanceKm)
       .slice(0, 7);
 
