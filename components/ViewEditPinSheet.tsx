@@ -21,12 +21,14 @@ interface ViewEditPinSheetProps {
   onClose: () => void;
   pin: any | null;
   pins?: any[];
+  nearbyPins?: Array<{ pin: any; distanceKm: number }>;
   minimizeTrigger?: number;
   openTrigger?: number;
+  onNearbyPinSelect?: (pin: any) => void;
 }
 interface NewPinImage { storageId: string; uri: string; caption: string; }
 
-export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], minimizeTrigger, openTrigger }: ViewEditPinSheetProps) {
+export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], nearbyPins = [], minimizeTrigger, openTrigger, onNearbyPinSelect }: ViewEditPinSheetProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -34,6 +36,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const isMinimizing = useRef(false);
 
   const [activePin, setActivePin] = useState<any | null>(null);
+  const [nearbyIndex, setNearbyIndex] = useState(0);
   const targetPin = activePin || pin;
 
   const maxSheetHeight = useMemo(() => {
@@ -78,6 +81,7 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
+  const [isClearingTags, setIsClearingTags] = useState(false);
 
   const tagsByCategory = allTags ? allTags.reduce((acc: any, tag: any) => {
     const category = tag.category || "Other";
@@ -110,6 +114,35 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
       await addTagToPin({ pinId: targetPin._id, tagId: id });
       setNewTagName(""); setSelectedColor("#3b82f6");
     } catch (err: any) { Alert.alert("Error", err?.message); }
+  };
+
+  
+  const handleClearAllTags = () => {
+    if (!targetPin || !pinTags?.length || isClearingTags) return;
+
+    Alert.alert(
+      "Clear all tags?",
+      "This will remove every tag from this pin.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear Tags",
+          style: "destructive",
+          onPress: async () => {
+            setIsClearingTags(true);
+            try {
+              await Promise.allSettled(
+                pinTags.map((tag: any) =>
+                  removeTagFromPin({ pinId: targetPin._id, tagId: tag._id })
+                )
+              );
+            } finally {
+              setIsClearingTags(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleUpdateCaption = (text: string) => {
@@ -211,6 +244,11 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     }
   }, [isOpen, pin, openTrigger]);
 
+  useEffect(() => {
+    const currentNearbyIndex = nearbyPins.findIndex((entry) => String(entry.pin._id) === String(targetPin?._id));
+    setNearbyIndex(currentNearbyIndex >= 0 ? currentNearbyIndex : 0);
+  }, [targetPin?._id, nearbyPins]);
+
   const allViewerPictures = [...(pinPictures || []).map((p: any) => ({ storageId: p.storageId, url: p.url, caption: p.caption, isExisting: true })), ...newImages.map(img => ({ storageId: img.storageId, url: img.uri, caption: img.caption, isExisting: false }))];
   let currentActiveCaption = '';
   if (viewerIndex !== null && allViewerPictures[viewerIndex]) {
@@ -220,6 +258,15 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
   }
 
   const displayDate = targetPin?.createdAt ? new Date(targetPin.createdAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '';
+  const hasNearbyPins = nearbyPins.length > 1;
+
+  const navigateNearby = (direction: -1 | 1) => {
+    if (!nearbyPins.length) return;
+
+    const nextIndex = (nearbyIndex + direction + nearbyPins.length) % nearbyPins.length;
+    setNearbyIndex(nextIndex);
+    onNearbyPinSelect?.(nearbyPins[nextIndex].pin);
+  };
 
   return (
     <BottomSheet
@@ -240,6 +287,26 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
     >
       {targetPin ? (
         <BottomSheetScrollView contentContainerStyle={styles.contentContainer} keyboardShouldPersistTaps="handled">
+          {hasNearbyPins && (
+            <View style={styles.topNavRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.nearbyArrowButton, styles.nearbyArrowButtonLeft, { backgroundColor: colorScheme === 'dark' ? '#242424' : '#f3f4f6', borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#d4d4d8' }]}
+                onPress={() => navigateNearby(-1)}
+              >
+                <IconSymbol name="chevron-left" size={24} color={theme.text} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.nearbyArrowButton, styles.nearbyArrowButtonRight, { backgroundColor: colorScheme === 'dark' ? '#242424' : '#f3f4f6', borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#d4d4d8' }]}
+                onPress={() => navigateNearby(1)}
+              >
+                <IconSymbol name="chevron-right" size={24} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           <GHScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
             {pinPictures && pinPictures.map((picture: any, index: number) => (
               <TouchableOpacity key={picture.storageId} style={styles.imagePreviewContainer} onPress={() => setViewerIndex(index)}>
@@ -315,6 +382,20 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], mini
           <TouchableWithoutFeedback><View style={[styles.modalContent, { backgroundColor: theme.background }]}>
             <View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>Manage Tags</Text><TouchableOpacity onPress={() => setShowTagModal(false)}><Text style={{ color: theme.text, fontSize: 24 }}>✕</Text></TouchableOpacity></View>
             <ScrollView style={{ padding: 16 }}>
+              <TouchableOpacity
+                style={[
+                  styles.clearTagsButton,
+                  {
+                    backgroundColor: colorScheme === 'dark' ? '#3a1f1f' : '#fee2e2',
+                    borderColor: colorScheme === 'dark' ? '#7f1d1d' : '#fca5a5',
+                    opacity: pinTags?.length ? 1 : 0.5,
+                  },
+                ]}
+                onPress={handleClearAllTags}
+                disabled={!pinTags?.length || isClearingTags}
+              >
+                <Text style={styles.clearTagsButtonText}>{isClearingTags ? 'Clearing...' : 'Clear Tags'}</Text>
+              </TouchableOpacity>
               {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
                 <View key={category} style={{ marginBottom: 20 }}><Text style={[styles.categoryTitle, { color: theme.text }]}>{category}</Text>
                   <View style={styles.tagOptionRow}>{tags.map((tag: any) => {
@@ -341,7 +422,11 @@ const styles = StyleSheet.create({
   handleContainer: { width: '100%', alignItems: 'center', paddingTop: 12, paddingBottom: 10 },
   handleIndicator: { width: 40, height: 4, borderRadius: 2 },
   contentContainer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  topNavRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   imageScroll: { marginBottom: 20 },
+  nearbyArrowButton: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  nearbyArrowButtonLeft: { alignSelf: 'flex-start' },
+  nearbyArrowButtonRight: { alignSelf: 'flex-end' },
   addImageButton: { width: 100, height: 120, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   imagePreviewContainer: { width: 100, height: 120, borderRadius: 12, overflow: 'hidden', marginRight: 10 },
   previewImage: { width: '100%', height: '100%', borderRadius: 12 },
@@ -393,4 +478,6 @@ const styles = StyleSheet.create({
   colorCircle: { width: 40, height: 40, borderRadius: 20 },
   createTagButton: { backgroundColor: '#000', paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   createTagButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  clearTagsButton: { marginTop: 10, marginBottom: 20, borderWidth: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', paddingBottom: 10 },
+  clearTagsButtonText: { color: '#dc2626', fontWeight: '700', fontSize: 14, paddingBottom: 2 },
 });
