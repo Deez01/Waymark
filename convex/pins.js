@@ -223,7 +223,7 @@ export const getPinPictures = query({
     const pin = await ctx.db.get(args.pinId);
 
     if (!pin) {
-      throw new Error("Pin not found");
+      return [];
     }
 
     const canView = await canUserViewPin(ctx, userId, args.pinId, pin);
@@ -595,7 +595,7 @@ export const getPinComments = query({
     const userId = assertAuthed(await getAuthUserId(ctx));
     const pin = await ctx.db.get(args.pinId);
     if (!pin) {
-      throw new Error("Pin not found");
+      return [];
     }
 
     const canView = await canUserViewPin(ctx, userId, args.pinId, pin);

@@ -252,7 +252,12 @@ export const getTagsForPin = query({
   args: { pinId: v.id("pins") },
   handler: async (ctx, args) => {
     const userId = assertAuthed(await getAuthUserId(ctx));
-    const canView = await canUserViewPin(ctx, userId, args.pinId);
+    const pin = await ctx.db.get(args.pinId);
+    if (!pin) {
+      return [];
+    }
+
+    const canView = await canUserViewPin(ctx, userId, args.pinId, pin);
     if (!canView) {
       throw new Error("Not authorized");
     }
