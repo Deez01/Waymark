@@ -28,6 +28,35 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
   return R * c;
 }
 
+type QuickFilter = "all" | "thisMonth" | "last30Days" | "thisYear";
+
+function getDateRange(filter: QuickFilter): { startDate?: number; endDate?: number } {
+  const now = new Date();
+
+  switch (filter) {
+    case "thisMonth": {
+      return {
+        startDate: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+        endDate: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime(),
+      };
+    }
+    case "last30Days": {
+      return {
+        startDate: now.getTime() - 30 * 24 * 60 * 60 * 1000,
+        endDate: now.getTime(),
+      };
+    }
+    case "thisYear": {
+      return {
+        startDate: new Date(now.getFullYear(), 0, 1).getTime(),
+        endDate: new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999).getTime(),
+      };
+    }
+    default:
+      return {};
+  }
+}
+
 // Renders an individual custom marker on the map.
 function PinMarker({ pin, theme, isSelected, onPinPress }: { pin: any, theme: any, isSelected: boolean, onPinPress: any }) {
   const { width } = useWindowDimensions();
@@ -167,6 +196,11 @@ export default function MapScreen() {
   const [isBulkActionPending, setIsBulkActionPending] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [selectedColor, setSelectedColor] = useState("#3b82f6");
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [filterText, setFilterText] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [quickDateFilter, setQuickDateFilter] = useState<QuickFilter>("all");
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const focusPinOnMap = (pin: any) => {
     const targetZoom = 0.01;
@@ -254,6 +288,79 @@ export default function MapScreen() {
       return acc;
     }, {});
   }, [allTags]);
+
+  const pinTagIdsByPinId = useMemo(() => {
+    const coverage = new Map<string, Set<string>>();
+
+    for (const row of allPinTagsWithDetails || []) {
+      const pinId = String(row.pinId);
+      const tagId = String(row.tagId);
+
+      if (!coverage.has(pinId)) {
+        coverage.set(pinId, new Set());
+      }
+
+      coverage.get(pinId)!.add(tagId);
+    }
+
+    return coverage;
+  }, [allPinTagsWithDetails]);
+
+  const activeFiltersCount = [
+    filterText.trim().length > 0,
+    locationQuery.trim().length > 0,
+    quickDateFilter !== "all",
+    selectedTagIds.length > 0,
+  ].filter(Boolean).length;
+
+  const filteredPins = useMemo(() => {
+    if (!pins?.length) return [];
+
+    const loweredFilterText = filterText.trim().toLowerCase();
+    const loweredLocationQuery = locationQuery.trim().toLowerCase();
+    const { startDate, endDate } = getDateRange(quickDateFilter);
+
+    return pins.filter((pin: any) => {
+      const searchableText = [
+        pin.title,
+        pin.caption,
+        pin.description,
+        pin.address,
+        pin.landmarkName,
+        pin.landmarkRegion,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const searchableLocation = [pin.address, pin.landmarkName, pin.landmarkRegion]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (loweredFilterText && !searchableText.includes(loweredFilterText)) {
+        return false;
+      }
+
+      if (loweredLocationQuery && !searchableLocation.includes(loweredLocationQuery)) {
+        return false;
+      }
+
+      if (startDate || endDate) {
+        const createdAt = typeof pin.createdAt === "number" ? pin.createdAt : 0;
+        if (startDate && createdAt < startDate) return false;
+        if (endDate && createdAt > endDate) return false;
+      }
+
+      if (selectedTagIds.length > 0) {
+        const pinTagIds = pinTagIdsByPinId.get(String(pin._id)) ?? new Set<string>();
+        const hasMatchingTag = selectedTagIds.some((tagId) => pinTagIds.has(tagId));
+        if (!hasMatchingTag) return false;
+      }
+
+      return true;
+    });
+  }, [pins, filterText, locationQuery, quickDateFilter, selectedTagIds, pinTagIdsByPinId]);
 
   const toggleBulkTagSelection = async (tag: any) => {
     if (!selectedPinIds.length) return;
@@ -568,11 +675,11 @@ export default function MapScreen() {
   };
 
   const pinsWithMarkerOffsets = useMemo(() => {
-    if (!pins?.length) return [];
+    if (!filteredPins.length) return [];
 
     const groups = new Map<string, any[]>();
 
-    for (const pin of pins) {
+    for (const pin of filteredPins) {
       const groupKey =
         pin?.isLandmarkMemory && pin?.landmarkKey
           ? `landmark:${pin.landmarkKey}`
@@ -586,7 +693,7 @@ export default function MapScreen() {
 
     const OFFSET_RADIUS = 0.0005;
 
-    return pins.map((pin: any) => {
+    return filteredPins.map((pin: any) => {
       const groupKey =
         pin?.isLandmarkMemory && pin?.landmarkKey
           ? `landmark:${pin.landmarkKey}`
@@ -611,20 +718,20 @@ export default function MapScreen() {
         markerLng: pin.lng + OFFSET_RADIUS * Math.sin(angle),
       };
     });
-  }, [pins]);
+  }, [filteredPins]);
 
   const getGroupedPinsForSelection = (pin: any) => {
-    if (!pins?.length) return [pin];
+    if (!pinsWithMarkerOffsets?.length) return [pin];
 
     if (pin?.isLandmarkMemory && pin?.landmarkKey) {
-      return pins.filter(
+      return pinsWithMarkerOffsets.filter(
         (p: any) =>
           p.isLandmarkMemory === true &&
           p.landmarkKey === pin.landmarkKey
       );
     }
 
-    return pins.filter(
+    return pinsWithMarkerOffsets.filter(
       (p: any) =>
         p.lat === pin.lat &&
         p.lng === pin.lng
@@ -656,9 +763,9 @@ export default function MapScreen() {
 
   const nearbyPins = useMemo(() => {
     const anchorPin = nearbyAnchorPin || selectedPin;
-    if (!pins?.length || !anchorPin) return [];
+    if (!pinsWithMarkerOffsets?.length || !anchorPin) return [];
 
-    const orderedNearbyPins = pins
+    const orderedNearbyPins = pinsWithMarkerOffsets
       .filter((pin: any) => String(pin._id) !== String(anchorPin._id))
       .map((pin: any) => ({
         pin,
@@ -674,7 +781,7 @@ export default function MapScreen() {
       .slice(0, 7);
 
     return [{ pin: anchorPin, distanceKm: 0 }, ...orderedNearbyPins];
-  }, [pins, nearbyAnchorPin, selectedPin]);
+  }, [pinsWithMarkerOffsets, nearbyAnchorPin, selectedPin]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -781,6 +888,25 @@ export default function MapScreen() {
               <Text style={styles.multiSelectToggleText}>Exit Multi-select</Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              {
+                backgroundColor: theme.background,
+                borderColor: colorScheme === 'dark' ? '#333' : '#d1d5db',
+              },
+            ]}
+            onPress={() => setIsFilterModalOpen(true)}
+          >
+            <MaterialIcons name="tune" size={16} color={adwaitaBlue} />
+            <Text style={[styles.filterButtonText, { color: theme.text }]}>Filter</Text>
+            {activeFiltersCount > 0 ? (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
         </View>
 
         {predictions.length > 0 && (
@@ -802,6 +928,153 @@ export default function MapScreen() {
           </View>
         )}
       </View>
+
+        <Modal
+          visible={isFilterModalOpen}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setIsFilterModalOpen(false)}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsFilterModalOpen(false)}>
+            <TouchableOpacity activeOpacity={1} style={[styles.filterModal, { backgroundColor: theme.background }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e7eb' }]}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Search & Filter Pins</Text>
+                <TouchableOpacity onPress={() => setIsFilterModalOpen(false)}>
+                  <Text style={{ color: theme.text, fontSize: 24 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ padding: 16 }} contentContainerStyle={styles.filterModalScrollContent}>
+                <TextInput
+                  style={[
+                    styles.filterInput,
+                    {
+                      color: theme.text,
+                      borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#d9d9d9',
+                      backgroundColor: colorScheme === 'dark' ? '#161616' : '#f8f8f8',
+                    },
+                  ]}
+                  placeholder="Search title, caption, description, address"
+                  placeholderTextColor={colorScheme === 'dark' ? '#777' : '#888'}
+                  value={filterText}
+                  onChangeText={setFilterText}
+                />
+
+                <TextInput
+                  style={[
+                    styles.filterInput,
+                    {
+                      marginTop: 10,
+                      color: theme.text,
+                      borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#d9d9d9',
+                      backgroundColor: colorScheme === 'dark' ? '#161616' : '#f8f8f8',
+                    },
+                  ]}
+                  placeholder="Location / city / region"
+                  placeholderTextColor={colorScheme === 'dark' ? '#777' : '#888'}
+                  value={locationQuery}
+                  onChangeText={setLocationQuery}
+                />
+
+                <Text style={[styles.categoryTitle, { color: theme.text, marginTop: 18 }]}>When</Text>
+                <View style={styles.chipRow}>
+                  {[
+                    { key: "all", label: "Any time" },
+                    { key: "thisMonth", label: "This month" },
+                    { key: "last30Days", label: "Last 30 days" },
+                    { key: "thisYear", label: "This year" },
+                  ].map((chip) => {
+                    const selected = quickDateFilter === chip.key;
+                    return (
+                      <TouchableOpacity
+                        key={chip.key}
+                        style={[
+                          styles.chip,
+                          selected && styles.chipSelected,
+                          {
+                            borderColor: selected ? adwaitaBlue : colorScheme === 'dark' ? '#444' : '#ccc',
+                          },
+                        ]}
+                        onPress={() => setQuickDateFilter(chip.key as QuickFilter)}
+                      >
+                        <Text style={[styles.chipText, { color: selected ? '#fff' : theme.text }]}>{chip.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={[styles.categoryTitle, { color: theme.text, marginTop: 18 }]}>Tags</Text>
+                <View style={{ marginBottom: 6 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.chip,
+                      selectedTagIds.length === 0 && styles.chipSelected,
+                      {
+                        borderColor: selectedTagIds.length === 0 ? adwaitaBlue : colorScheme === 'dark' ? '#444' : '#ccc',
+                        alignSelf: 'flex-start',
+                      },
+                    ]}
+                    onPress={() => setSelectedTagIds([])}
+                  >
+                    <Text style={[styles.chipText, { color: selectedTagIds.length === 0 ? '#fff' : theme.text }]}>Any</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {Object.entries(tagsByCategory).map(([category, tags]: [string, any]) => (
+                  <View key={category} style={{ marginBottom: 10 }}>
+                    <Text style={[styles.tagCategoryTitle, { color: theme.text }]}>{category}</Text>
+                    <View style={styles.chipRow}>
+                      {tags.map((tag: any) => {
+                        const selected = selectedTagIds.includes(String(tag._id));
+                        return (
+                          <TouchableOpacity
+                            key={tag._id}
+                            style={[
+                              styles.chip,
+                              selected && styles.chipSelected,
+                              {
+                                borderColor: selected ? adwaitaBlue : colorScheme === 'dark' ? '#444' : '#ccc',
+                              },
+                            ]}
+                            onPress={() => {
+                              setSelectedTagIds((prev) =>
+                                prev.includes(String(tag._id))
+                                  ? prev.filter((id) => id !== String(tag._id))
+                                  : [...prev, String(tag._id)]
+                              );
+                            }}
+                          >
+                            <Text style={[styles.chipText, { color: selected ? '#fff' : theme.text }]}>{tag.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.resetButton]}
+                    onPress={() => {
+                      setFilterText('');
+                      setLocationQuery('');
+                      setQuickDateFilter('all');
+                      setSelectedTagIds([]);
+                    }}
+                  >
+                    <Text style={styles.resetButtonText}>Reset</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.applyButton]}
+                    onPress={() => setIsFilterModalOpen(false)}
+                  >
+                    <Text style={styles.applyButtonText}>Apply</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
 
       {isMultiSelectMode && (
         <View style={[styles.multiSelectActionBar, { bottom: insets.bottom + 18, backgroundColor: colorScheme === 'dark' ? '#171717' : '#ffffff', borderColor: colorScheme === 'dark' ? '#333' : '#d1d5db' }]}>
@@ -1060,6 +1333,10 @@ const styles = StyleSheet.create({
   mapActionsRow: { alignItems: 'flex-start', marginTop: 8, marginBottom: 8 },
   multiSelectToggleButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
   multiSelectToggleText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  filterButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, marginTop: 8 },
+  filterButtonText: { fontSize: 13, fontWeight: '700' },
+  filterBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#e01b24', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  filterBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   searchContainer: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 15, height: 50, elevation: 5, shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 16 },
@@ -1083,6 +1360,20 @@ const styles = StyleSheet.create({
   modalContent: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '85%', minHeight: '50%' },
   modalHeader: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalTitle: { fontSize: 18, fontWeight: '600' },
+  filterModal: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '85%', minHeight: '50%' },
+  filterModalScrollContent: { paddingBottom: 12 },
+  filterInput: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, borderWidth: 1, marginRight: 8, marginBottom: 8 },
+  chipSelected: { backgroundColor: '#62a0ea' },
+  chipText: { fontSize: 13, fontWeight: '700' },
+  tagCategoryTitle: { fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  actionButton: { flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: 'center' },
+  resetButton: { backgroundColor: '#e5e7eb' },
+  applyButton: { backgroundColor: '#62a0ea' },
+  resetButtonText: { color: '#111827', fontWeight: '800', fontSize: 14 },
+  applyButtonText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   categoryTitle: { fontSize: 14, fontWeight: '600', marginBottom: 10 },
   tagOptionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, minWidth: 96 },
