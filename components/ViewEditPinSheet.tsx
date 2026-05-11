@@ -1,18 +1,19 @@
 // components/ViewEditPinSheet.tsx
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Keyboard, ScrollView, Dimensions, Platform, BackHandler, Modal, FlatList, Animated, Alert, TouchableWithoutFeedback } from 'react-native';
-import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
-import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
-import { useMutation, useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Colors } from '@/constants/theme';
+import { api } from '@/convex/_generated/api';
+import { compressPinImage } from '@/hooks/image-compressor';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import BottomSheet, { BottomSheetScrollView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
+import { useMutation, useQuery } from 'convex/react';
+import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as Clipboard from 'expo-clipboard';
+import { router } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Dimensions, FlatList, Keyboard, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { compressPinImage } from '@/hooks/image-compressor';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -96,6 +97,19 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], near
       await Clipboard.setStringAsync(addr);
       showToast();
     }
+  };
+
+  const handleReportPin = () => {
+    if (!targetPin?._id) return;
+
+    router.push({
+      pathname: '/report-pin',
+      params: {
+        pinId: String(targetPin._id),
+        pinTitle: targetPin.title ?? '',
+        pinAddress: targetPin.address ?? '',
+      },
+    });
   };
 
   const toggleTagSelection = async (tag: any) => {
@@ -364,6 +378,10 @@ export default function ViewEditPinSheet({ isOpen, onClose, pin, pins = [], near
               <BottomSheetTextInput style={[styles.notesInput, sheetIndex === 2 && styles.notesInputExpanded, { color: theme.text }]} placeholder="Add Notes..." placeholderTextColor={colorScheme === 'dark' ? '#666' : '#888'} multiline value={description} onChangeText={setDescription} onFocus={() => setIsSheetInputFocused(true)} blurOnSubmit={true} onSubmitEditing={() => Keyboard.dismiss()} />
               <TouchableOpacity style={styles.saveButton} onPress={handleUpdate} disabled={isSubmitting}>{isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Update</Text>}</TouchableOpacity>
             </View>
+
+            <TouchableOpacity style={styles.reportButton} onPress={handleReportPin}>
+              <Text style={styles.reportButtonText}>Report Pin</Text>
+            </TouchableOpacity>
           </View>
         </BottomSheetScrollView>
       ) : <View style={{ flex: 1 }} />}
@@ -452,6 +470,8 @@ const styles = StyleSheet.create({
   notesInputExpanded: { flex: 1, maxHeight: '100%', textAlignVertical: 'top' },
   saveButton: { backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center' },
   saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  reportButton: { alignSelf: 'flex-end', paddingHorizontal: 10, paddingVertical: 6, marginTop: 10 },
+  reportButtonText: { color: '#e01b24', fontSize: 14, fontWeight: '700' },
   toastContainer: { position: 'absolute', left: '20%', right: '20%', backgroundColor: 'rgba(0,0,0,0.8)', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 25, alignItems: 'center', zIndex: 2000 },
   toastText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: 'flex-end' },
