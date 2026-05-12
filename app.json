@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.Waymark",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Allow Waymark to use your location so you can view yourself on the map and create pins nearby.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waymark to use your location in the background so it can notify you when you are near your saved pins.",
+        "NSLocationAlwaysUsageDescription": "Allow Waymark to use your location in the background so it can notify you when you are near your saved pins."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +25,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",

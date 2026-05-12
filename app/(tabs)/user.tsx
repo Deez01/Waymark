@@ -48,6 +48,7 @@ export default function UserScreen() {
   const updateProfile = useMutation(api.users.updateProfile);
   const { signOut } = useAuthActions();
   const [perms, setPerms] = useState<GeofencingPermissions | null>(null);
+  const [hideAlertsPrompt, setHideAlertsPrompt] = useState(false);
 
   useEffect(() => {
     checkGeofencingPermissions().then(setPerms);
@@ -57,6 +58,7 @@ export default function UserScreen() {
     perms?.foregroundLocation && perms?.backgroundLocation && perms?.notifications;
 
   const handleEnableAlerts = async () => {
+    setHideAlertsPrompt(true);
     const result = await requestAllGeofencingPermissions();
     setPerms(result);
 
@@ -143,30 +145,30 @@ export default function UserScreen() {
           <Stat label="Friends" value={friends?.length || 0} />
         </View>
 
-        <TouchableOpacity
-          onPress={allGranted ? undefined : handleEnableAlerts}
-          activeOpacity={allGranted ? 1 : 0.75}
-          style={{
-            marginTop: 16,
-            backgroundColor: allGranted ? "#26a269" : "#e01b24",
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            borderRadius: 14,
-          }}
-        >
-          <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
-            {allGranted ? "Nearby Pin Alerts Enabled" : "Enable Nearby Pin Alerts"}
-          </Text>
-          <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 4 }}>
-            {allGranted
-              ? "Waymark will alert you when you're close to one of your saved pins."
-              : !perms?.foregroundLocation
+        {!allGranted && !hideAlertsPrompt && (
+          <TouchableOpacity
+            onPress={handleEnableAlerts}
+            activeOpacity={0.75}
+            style={{
+              marginTop: 16,
+              backgroundColor: "#e01b24",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderRadius: 14,
+            }}
+          >
+            <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+              Enable Nearby Pin Alerts
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 4 }}>
+              {!perms?.foregroundLocation
                 ? "Allow location and notifications to get alerts near your saved pins."
                 : !perms?.backgroundLocation
                   ? "Requires 'Always Allow' location access to keep working in the background."
                   : "Tap to finish enabling notification access."}
-          </Text>
-        </TouchableOpacity>
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <View
           style={{

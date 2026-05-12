@@ -18,6 +18,7 @@ import type * as memories from "../memories.js";
 import type * as messages from "../messages.js";
 import type * as pinTags from "../pinTags.js";
 import type * as pins from "../pins.js";
+import type * as recaps from "../recaps.js";
 import type * as seedTags from "../seedTags.js";
 import type * as social from "../social.js";
 import type * as timeline from "../timeline.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   messages: typeof messages;
   pinTags: typeof pinTags;
   pins: typeof pins;
+  recaps: typeof recaps;
   seedTags: typeof seedTags;
   social: typeof social;
   timeline: typeof timeline;
