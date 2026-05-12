@@ -35,6 +35,7 @@ export default function UserScreen() {
   const backgroundColor = isDark ? "#121212" : "#fff";
   const textColor = isDark ? "#fff" : "#000";
   const subTextColor = isDark ? "#aaa" : "#666";
+  const cardColor = isDark ? "#1d1d1d" : "#f5f7fb";
 
   const user = useQuery(api.users.getCurrentUser);
   const overview = useQuery(api.achievements.getOverview);
@@ -117,10 +118,6 @@ export default function UserScreen() {
   }
 
   const isPosts = activeTab === "posts";
-  const backgroundColor = isDark ? "#121212" : "#fff";
-  const textColor = isDark ? "#fff" : "#000";
-  const subTextColor = isDark ? "#aaa" : "#666";
-  const cardColor = isDark ? "#1d1d1d" : "#f5f7fb";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor }}>

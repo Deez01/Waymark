@@ -14,7 +14,11 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Allow Waymark to use your location so you can view yourself on the map and create pins nearby.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Waymark to use your location in the background so it can notify you when you are near your saved pins.",
-        "NSLocationAlwaysUsageDescription": "Allow Waymark to use your location in the background so it can notify you when you are near your saved pins."
+        "NSLocationAlwaysUsageDescription": "Allow Waymark to use your location in the background so it can notify you when you are near your saved pins.",
+        "UIBackgroundModes": [
+          "fetch",
+          "location"
+        ]
       }
     },
     "android": {
