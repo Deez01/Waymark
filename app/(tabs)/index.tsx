@@ -787,7 +787,6 @@ export default function MapScreen() {
     <View style={{ flex: 1 }}>
       <MapView
         ref={mapRef}
-        provider="google"
         style={{ flex: 1 }}
         initialRegion={{
           latitude: 33.783,

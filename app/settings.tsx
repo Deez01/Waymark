@@ -243,10 +243,43 @@ export default function SettingsScreen() {
           multiline
         />
 
+        <View
+          style={{
+            marginTop: 8,
+            marginBottom: 8,
+          }}
+        >
+          <Text
+            style={{
+              color: textColor,
+              marginBottom: 8,
+              fontWeight: "600",
+            }}
+          >
+            Recaps
+          </Text>
+
+          <SettingsAction
+            label="Monthly Recap"
+            description="View your live monthly Waymark recap"
+            textColor={textColor}
+            inputBg={inputBg}
+            onPress={() => router.push("/recap?period=monthly")}
+          />
+
+          <SettingsAction
+            label="Yearly Recap"
+            description="View your live yearly Waymark recap"
+            textColor={textColor}
+            inputBg={inputBg}
+            onPress={() => router.push("/recap?period=yearly")}
+          />
+        </View>
+
         <TouchableOpacity
           onPress={handleSave}
           style={{
-            backgroundColor: "#000",
+            backgroundColor: isDark ? "#fff" : "#000",
             padding: 14,
             borderRadius: 12,
             marginTop: 25,
@@ -254,7 +287,7 @@ export default function SettingsScreen() {
         >
           <Text
             style={{
-              color: "#fff",
+              color: isDark ? "#000" : "#fff",
               textAlign: "center",
               fontWeight: "700",
             }}
@@ -264,6 +297,44 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function SettingsAction({
+  label,
+  description,
+  textColor,
+  inputBg,
+  onPress,
+}: any) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        backgroundColor: inputBg,
+        padding: 14,
+        borderRadius: 12,
+        marginBottom: 12,
+      }}
+    >
+      <Text
+        style={{
+          color: textColor,
+          fontWeight: "700",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          color: textColor,
+          opacity: 0.7,
+        }}
+      >
+        {description}
+      </Text>
+    </TouchableOpacity>
   );
 }
 

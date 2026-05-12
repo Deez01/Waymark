@@ -2,10 +2,11 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation, useQuery } from "convex/react";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dimensions,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   Text,
@@ -16,6 +17,11 @@ import {
 import ImageViewing from "react-native-image-viewing";
 import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  checkGeofencingPermissions,
+  requestAllGeofencingPermissions,
+  type GeofencingPermissions,
+} from "@/lib/permissions";
 
 import ProfileImage from "@/components/ProfileImage";
 import { api } from "../../convex/_generated/api";
@@ -45,6 +51,26 @@ export default function UserScreen() {
 
   const updateProfile = useMutation(api.users.updateProfile);
   const { signOut } = useAuthActions();
+  const [perms, setPerms] = useState<GeofencingPermissions | null>(null);
+  const [hideAlertsPrompt, setHideAlertsPrompt] = useState(false);
+
+  useEffect(() => {
+    checkGeofencingPermissions().then(setPerms);
+  }, []);
+
+  const allGranted =
+    perms?.foregroundLocation && perms?.backgroundLocation && perms?.notifications;
+
+  const handleEnableAlerts = async () => {
+    setHideAlertsPrompt(true);
+    const result = await requestAllGeofencingPermissions();
+    setPerms(result);
+
+    // If background location was denied, the user likely needs to go to Settings
+    if (!result.backgroundLocation && result.foregroundLocation) {
+      Linking.openSettings();
+    }
+  };
 
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("posts");
@@ -91,6 +117,10 @@ export default function UserScreen() {
   }
 
   const isPosts = activeTab === "posts";
+  const backgroundColor = isDark ? "#121212" : "#fff";
+  const textColor = isDark ? "#fff" : "#000";
+  const subTextColor = isDark ? "#aaa" : "#666";
+  const cardColor = isDark ? "#1d1d1d" : "#f5f7fb";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor }}>
@@ -167,6 +197,67 @@ export default function UserScreen() {
             value={friends?.length || 0}
             isDark={isDark}
           />
+        </View>
+
+        {!allGranted && !hideAlertsPrompt && (
+          <TouchableOpacity
+            onPress={handleEnableAlerts}
+            activeOpacity={0.75}
+            style={{
+              marginTop: 16,
+              backgroundColor: "#e01b24",
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderRadius: 14,
+            }}
+          >
+            <Text style={{ color: "white", fontWeight: "700", fontSize: 15 }}>
+              Enable Nearby Pin Alerts
+            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 4 }}>
+              {!perms?.foregroundLocation
+                ? "Allow location and notifications to get alerts near your saved pins."
+                : !perms?.backgroundLocation
+                  ? "Requires 'Always Allow' location access to keep working in the background."
+                  : "Tap to finish enabling notification access."}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <View
+          style={{
+            marginTop: 12,
+            flexDirection: "row",
+            gap: 10,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => router.push("/timeline")}
+            style={{
+              flex: 1,
+              backgroundColor: cardColor,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              borderRadius: 12,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: textColor, fontWeight: "600" }}>View Timeline</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push("/settings")}
+            style={{
+              flex: 1,
+              backgroundColor: cardColor,
+              paddingHorizontal: 12,
+              paddingVertical: 11,
+              borderRadius: 12,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: textColor, fontWeight: "600" }}>Settings</Text>
+          </TouchableOpacity>
         </View>
 
         {/* TABS */}
